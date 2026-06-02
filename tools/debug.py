@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Convert an input audio file into every format supported by Dionysus.
+Convert an input audio file into every format supported by Gozik.
 Outputs are placed under testfiles/ by default.
 
 Usage:
@@ -56,7 +56,7 @@ def convert(input_path: str | None, out_dir: str) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
     if not input_path or not os.path.isfile(input_path):
-        dummy_path = os.path.join(tempfile.gettempdir(), "dionysus_test_input.wav")
+        dummy_path = os.path.join(tempfile.gettempdir(), "gozik_test_input.wav")
         print(f"Input file not provided or not found, generating dummy audio: {dummy_path}")
         generate_dummy_audio(dummy_path)
         input_path = dummy_path
@@ -85,7 +85,7 @@ def convert(input_path: str | None, out_dir: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert an audio file to all Dionysus-supported formats for debugging."
+        description="Convert an audio file to all Gozik-supported formats for debugging."
     )
     parser.add_argument(
         "input",

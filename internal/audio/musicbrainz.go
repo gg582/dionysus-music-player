@@ -168,7 +168,7 @@ func searchMusicBrainzDirect(query string) (*MBRecording, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "DionysusMusicPlayer/1.0")
+	req.Header.Set("User-Agent", "GozikMusicPlayer/1.0")
 
 	resp, err := mbHTTPClient.Do(req)
 	if err != nil {
@@ -288,7 +288,7 @@ func fetchCoverArtURL(releaseID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "DionysusMusicPlayer/1.0")
+	req.Header.Set("User-Agent", "GozikMusicPlayer/1.0")
 
 	resp, err := mbHTTPClient.Do(req)
 	if err != nil {
@@ -311,7 +311,7 @@ func DownloadImage(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "DionysusMusicPlayer/1.0")
+	req.Header.Set("User-Agent", "GozikMusicPlayer/1.0")
 
 	resp, err := mbHTTPClient.Do(req)
 	if err != nil {

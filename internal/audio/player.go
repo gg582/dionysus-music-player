@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gg582/dionysus-music-player/internal/cdrom"
+	"github.com/gg582/gozik/internal/cdrom"
 	"github.com/gopxl/beep"
 	"github.com/gopxl/beep/effects"
 	"github.com/gopxl/beep/flac"

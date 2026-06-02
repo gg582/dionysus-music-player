@@ -1,4 +1,4 @@
-# Dionysus
+# Gozik
 
 A simple desktop music player for Linux. It plays local audio files and audio CDs with a minimal GTK3 interface.
 
@@ -32,13 +32,13 @@ make
 Or directly with Go:
 
 ```bash
-go build ./cmd/dionysus
+go build ./cmd/gozik
 ```
 
 ## Run
 
 ```bash
-./dionysus
+./gozik
 ```
 
 You can also pass a file or playlist as an argument if the application supports it in the future.
@@ -56,7 +56,7 @@ You can also pass a file or playlist as an argument if the application supports 
 
 ```
 assets/         Icons and Glade UI files
-cmd/dionysus/   Application entrypoint
+cmd/gozik/   Application entrypoint
 internal/
   audio/        Audio playback engine (beep-based)
   cdrom/        CD-ROM reading (Linux)

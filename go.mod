@@ -1,8 +1,9 @@
-module github.com/gg582/dionysus-music-player
+module github.com/gg582/gozik
 
 go 1.25.0
 
 require (
+	github.com/bogem/id3v2/v2 v2.1.4
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/gopxl/beep v1.4.1
 	github.com/gotk3/gotk3 v0.6.5-0.20251124190141-e7a9e823ca35
@@ -11,7 +12,6 @@ require (
 )
 
 require (
-	github.com/bogem/id3v2/v2 v2.1.4 // indirect
 	github.com/ebitengine/oto/v3 v3.1.0 // indirect
 	github.com/ebitengine/purego v0.7.1 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect

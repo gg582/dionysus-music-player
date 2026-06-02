@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Dionysus
+Name=Gozik
 Comment=Simple GTK music player
-Exec=dionysus
-Icon=dionysus
+Exec=gozik
+Icon=gozik
 Type=Application
 Categories=AudioVideo;Audio;Player;
 Terminal=false

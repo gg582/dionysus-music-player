@@ -9,34 +9,34 @@ import (
 // Prefix can be overridden at link time with -ldflags.
 var Prefix = ""
 
-// AssetPath searches for a resource relative to the dionysus data directory.
+// AssetPath searches for a resource relative to the gozik data directory.
 // It checks, in order:
-//  1. Compiled-in Prefix + share/dionysus/<rel>
-//  2. /usr/share/dionysus/<rel>
-//  3. /usr/local/share/dionysus/<rel>
-//  4. XDG_DATA_DIRS entries + dionysus/<rel>
-//  5. DIONYSUS_ASSETS environment variable
+//  1. Compiled-in Prefix + share/gozik/<rel>
+//  2. /usr/share/gozik/<rel>
+//  3. /usr/local/share/gozik/<rel>
+//  4. XDG_DATA_DIRS entries + gozik/<rel>
+//  5. GOZIK_ASSETS environment variable
 //  6. ./assets/<rel> (development fallback)
 func AssetPath(rel string) string {
 	candidates := []string{}
 
 	if Prefix != "" {
-		candidates = append(candidates, filepath.Join(Prefix, "share", "dionysus", rel))
+		candidates = append(candidates, filepath.Join(Prefix, "share", "gozik", rel))
 	}
 	candidates = append(candidates,
-		filepath.Join("/usr", "share", "dionysus", rel),
-		filepath.Join("/usr", "local", "share", "dionysus", rel),
+		filepath.Join("/usr", "share", "gozik", rel),
+		filepath.Join("/usr", "local", "share", "gozik", rel),
 	)
 
 	if xdg := os.Getenv("XDG_DATA_DIRS"); xdg != "" {
 		for _, dir := range strings.Split(xdg, ":") {
 			if dir != "" {
-				candidates = append(candidates, filepath.Join(dir, "dionysus", rel))
+				candidates = append(candidates, filepath.Join(dir, "gozik", rel))
 			}
 		}
 	}
 
-	if env := os.Getenv("DIONYSUS_ASSETS"); env != "" {
+	if env := os.Getenv("GOZIK_ASSETS"); env != "" {
 		candidates = append(candidates, filepath.Join(env, rel))
 	}
 

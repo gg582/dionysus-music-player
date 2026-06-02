@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gg582/dionysus-music-player/internal/audio"
-	"github.com/gg582/dionysus-music-player/internal/cdrom"
-	"github.com/gg582/dionysus-music-player/internal/config"
-	"github.com/gg582/dionysus-music-player/internal/models"
-	"github.com/gg582/dionysus-music-player/internal/utils"
+	"github.com/gg582/gozik/internal/audio"
+	"github.com/gg582/gozik/internal/cdrom"
+	"github.com/gg582/gozik/internal/config"
+	"github.com/gg582/gozik/internal/models"
+	"github.com/gg582/gozik/internal/utils"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
@@ -24,8 +24,8 @@ const (
 	themeClassDark  = "theme-dark"
 )
 
-var mainWindowXML = config.AssetPath("ui/dionysus-main-window.glade")
-var mainWindowCSS = config.AssetPath("ui/dionysus.css")
+var mainWindowXML = config.AssetPath("ui/gozik-main-window.glade")
+var mainWindowCSS = config.AssetPath("ui/gozik.css")
 
 type MainWindow struct {
 	win              *gtk.Window
@@ -62,7 +62,7 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	utils.ErrorHandler(err, "loading UI from glade", logLevel, "error")
 	applyAppTheme()
 
-	obj, err := builder.GetObject("Dionysus-ToplevelWindow")
+	obj, err := builder.GetObject("Gozik-ToplevelWindow")
 	utils.ErrorHandler(err, "getting toplevel window", logLevel, "error")
 	win, ok := obj.(*gtk.Window)
 	if !ok {
