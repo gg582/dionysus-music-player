@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sahilm/fuzzy"
 )
@@ -213,4 +215,70 @@ func stripSyncTags(synced string) string {
 		out = append(out, strings.TrimSpace(line))
 	}
 	return strings.Join(out, "\n")
+}
+
+// LRCLine represents a single synced lyric line.
+type LRCLine struct {
+	Time time.Duration
+	Text string
+}
+
+// ParseSyncedLyrics parses LRC-format synced lyrics into timed lines.
+func ParseSyncedLyrics(synced string) []LRCLine {
+	var lines []LRCLine
+	for _, rawLine := range strings.Split(synced, "\n") {
+		rawLine = strings.TrimSpace(rawLine)
+		if rawLine == "" {
+			continue
+		}
+		var timestamps []time.Duration
+		text := rawLine
+		for {
+			start := strings.Index(text, "[")
+			end := strings.Index(text, "]")
+			if start == -1 || end == -1 || end < start {
+				break
+			}
+			tag := text[start+1 : end]
+			text = text[end+1:]
+			if t, ok := parseLrcTime(tag); ok {
+				timestamps = append(timestamps, t)
+			}
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		for _, t := range timestamps {
+			lines = append(lines, LRCLine{Time: t, Text: text})
+		}
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		return lines[i].Time < lines[j].Time
+	})
+	return lines
+}
+
+func parseLrcTime(tag string) (time.Duration, bool) {
+	parts := strings.Split(tag, ":")
+	if len(parts) != 2 {
+		return 0, false
+	}
+	min, err1 := strconv.Atoi(parts[0])
+	secParts := strings.Split(parts[1], ".")
+	sec, err2 := strconv.Atoi(secParts[0])
+	if err1 != nil || err2 != nil || min < 0 || sec < 0 || sec >= 60 {
+		return 0, false
+	}
+	ms := 0
+	if len(secParts) > 1 {
+		msStr := secParts[1]
+		if len(msStr) == 2 {
+			ms, _ = strconv.Atoi(msStr)
+			ms *= 10
+		} else if len(msStr) >= 3 {
+			ms, _ = strconv.Atoi(msStr[:3])
+		}
+	}
+	return time.Duration(min)*time.Minute + time.Duration(sec)*time.Second + time.Duration(ms)*time.Millisecond, true
 }

@@ -236,22 +236,21 @@ func (p *Player) Pause() {
 }
 
 func (p *Player) Stop() {
-	if p.streamer == nil {
+	if p.streamer == nil || p.ctrl == nil {
+		return
+	}
+	if err := p.initSpeaker(); err != nil {
 		return
 	}
 	speaker.Clear()
 	speaker.Lock()
-	if p.ctrl != nil {
-		p.ctrl.Paused = false
-	}
+	p.ctrl.Paused = false
 	p.paused = false
 	p.started = false
 	_ = p.streamer.Seek(0)
-	if p.ctrl != nil {
-		p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
-		if p.volume != nil {
-			p.volume.Streamer = p.resampled
-		}
+	p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
+	if p.volume != nil {
+		p.volume.Streamer = p.resampled
 	}
 	speaker.Unlock()
 }

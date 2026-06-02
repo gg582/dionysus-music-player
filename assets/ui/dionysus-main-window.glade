@@ -102,13 +102,22 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkListBox" id="Songlist">
+                  <object class="GtkScrolledWindow" id="SonglistScroll">
                     <property name="visible">True</property>
-                    <property name="can-focus">False</property>
-                    <property name="width-request">420</property>
-                    <property name="height-request">220</property>
+                    <property name="can-focus">True</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
+                    <property name="shadow-type">in</property>
+                    <child>
+                      <object class="GtkListBox" id="Songlist">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="width-request">420</property>
+                        <property name="height-request">220</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">3</property>

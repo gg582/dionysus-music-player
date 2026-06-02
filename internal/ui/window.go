@@ -15,6 +15,7 @@ import (
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
+	"github.com/gotk3/gotk3/pango"
 )
 
 const (
@@ -27,21 +28,23 @@ var mainWindowXML = config.AssetPath("ui/dionysus-main-window.glade")
 var mainWindowCSS = config.AssetPath("ui/dionysus.css")
 
 type MainWindow struct {
-	win             *gtk.Window
-	listBox         *gtk.ListBox
-	timeLabel       *gtk.Label
-	progressBar     *gtk.Scale
-	lyricsView      *gtk.TextView
-	albumCover      *gtk.Image
-	albumTitle      *gtk.Label
-	albumYear       *gtk.Label
-	player          *audio.Player
-	songs           []models.Song
-	selectedIdx     int
-	ticker          *time.Ticker
-	tickerDone      chan struct{}
-	gtkSettings     *gtk.Settings
-	desktopSettings *glib.Settings
+	win              *gtk.Window
+	listBox          *gtk.ListBox
+	timeLabel        *gtk.Label
+	progressBar      *gtk.Scale
+	lyricsView       *gtk.TextView
+	albumCover       *gtk.Image
+	albumTitle       *gtk.Label
+	albumYear        *gtk.Label
+	player           *audio.Player
+	songs            []models.Song
+	selectedIdx      int
+	ticker           *time.Ticker
+	tickerDone       chan struct{}
+	syncedLyrics     []audio.LRCLine
+	currentLyricLine int
+	gtkSettings      *gtk.Settings
+	desktopSettings  *glib.Settings
 }
 
 func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
@@ -401,34 +404,48 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 	if mw.listBox == nil {
 		return
 	}
-	label, err := gtk.LabelNew(song.Name)
-	if err != nil {
-		return
-	}
 	row, err := gtk.ListBoxRowNew()
 	if err != nil {
 		return
 	}
-	row.Add(label)
-	row.ShowAll()
 
-	row.Connect("button-press-event", func(r *gtk.ListBoxRow, event *gdk.Event) bool {
-		btnEvent := gdk.EventButtonNewFromEvent(event)
-		if btnEvent.Button() == 3 { // right click
-			idx := r.GetIndex()
-			mw.listBox.Remove(r)
-			if idx >= 0 && idx < len(mw.songs) {
-				mw.songs = append(mw.songs[:idx], mw.songs[idx+1:]...)
-			}
-			if mw.selectedIdx == idx {
-				mw.selectedIdx = -1
-			} else if mw.selectedIdx > idx {
-				mw.selectedIdx--
-			}
-			return true
+	box, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	if err != nil {
+		return
+	}
+
+	label, err := gtk.LabelNew(song.Name)
+	if err != nil {
+		return
+	}
+	label.SetHAlign(gtk.ALIGN_START)
+	label.SetEllipsize(pango.ELLIPSIZE_END)
+
+	btn, err := gtk.ButtonNewWithLabel("×")
+	if err != nil {
+		return
+	}
+	btn.SetRelief(gtk.RELIEF_NONE)
+	btn.SetFocusOnClick(false)
+	btn.SetSizeRequest(24, 24)
+
+	btn.Connect("clicked", func() {
+		idx := row.GetIndex()
+		mw.listBox.Remove(row)
+		if idx >= 0 && idx < len(mw.songs) {
+			mw.songs = append(mw.songs[:idx], mw.songs[idx+1:]...)
 		}
-		return false
+		if mw.selectedIdx == idx {
+			mw.selectedIdx = -1
+		} else if mw.selectedIdx > idx {
+			mw.selectedIdx--
+		}
 	})
+
+	box.PackStart(label, true, true, 0)
+	box.PackEnd(btn, false, false, 0)
+	row.Add(box)
+	row.ShowAll()
 
 	mw.listBox.Add(row)
 }
@@ -529,6 +546,29 @@ func (mw *MainWindow) startTicker() {
 					if pos >= length && length > 0 {
 						mw.onStop()
 					}
+
+					// Sync lyrics highlight & scroll
+					if len(mw.syncedLyrics) > 0 && mw.lyricsView != nil {
+						targetLine := -1
+						for i, line := range mw.syncedLyrics {
+							if pos >= line.Time {
+								targetLine = i
+							} else {
+								break
+							}
+						}
+						if targetLine != mw.currentLyricLine && targetLine >= 0 {
+							mw.currentLyricLine = targetLine
+							b, _ := mw.lyricsView.GetBuffer()
+							if b != nil {
+								start := b.GetIterAtLine(targetLine)
+								end := b.GetIterAtLine(targetLine + 1)
+								b.SelectRange(start, end)
+								mw.lyricsView.ScrollToIter(start, 0.0, true, 0.0, 0.5)
+							}
+						}
+					}
+
 					return false
 				})
 			case <-mw.tickerDone:
@@ -541,7 +581,9 @@ func (mw *MainWindow) startTicker() {
 func (mw *MainWindow) stopTicker() {
 	if mw.ticker != nil {
 		mw.ticker.Stop()
-		close(mw.tickerDone)
+		if mw.tickerDone != nil {
+			close(mw.tickerDone)
+		}
 		mw.ticker = nil
 		mw.tickerDone = nil
 	}
@@ -592,7 +634,7 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 			meta, err := audio.ExtractMetadata(song.Location)
 			if err == nil && meta != nil && meta.Lyrics != "" {
 				lyrics = meta.Lyrics
-				 song.Lyrics = meta.Lyrics
+				song.Lyrics = meta.Lyrics
 			} else {
 				title := song.Title
 				if title == "" {
@@ -608,14 +650,27 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 				}
 			}
 		}
+
+		// Parse synced lyrics
+		mw.syncedLyrics = audio.ParseSyncedLyrics(lyrics)
+		displayText := lyrics
+		if len(mw.syncedLyrics) > 0 {
+			var texts []string
+			for _, l := range mw.syncedLyrics {
+				texts = append(texts, l.Text)
+			}
+			displayText = strings.Join(texts, "\n")
+		}
+
 		glib.IdleAdd(func() bool {
 			if mw.lyricsView == nil {
 				return false
 			}
 			b, _ := mw.lyricsView.GetBuffer()
 			if b != nil {
-				b.SetText(lyrics)
+				b.SetText(displayText)
 			}
+			mw.currentLyricLine = -1
 			return false
 		})
 	}()
@@ -626,8 +681,8 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 		return
 	}
 	go func() {
-		// 1. Try metadata first
-		if song.Artist == "" || song.Album == "" || song.Title == "" {
+		// 1. Try metadata first (artist/album/title + embedded cover)
+		if song.Artist == "" || song.Album == "" || song.Title == "" || len(song.CoverData) == 0 {
 			meta, err := audio.ExtractMetadata(song.Location)
 			if err == nil && meta != nil {
 				if song.Artist == "" {
@@ -639,11 +694,22 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 				if song.Album == "" {
 					song.Album = meta.Album
 				}
+				if len(song.CoverData) == 0 && len(meta.Picture) > 0 {
+					song.CoverData = meta.Picture
+				}
 			}
 		}
 
-		// 2. Queue MusicBrainz search if still missing info or cover art
-		if song.Artist == "" || song.Title == "" || song.CoverArtURL == "" {
+		// Show embedded cover immediately if available
+		if len(song.CoverData) > 0 {
+			glib.IdleAdd(func() bool {
+				mw.setAlbumCover(song.CoverData)
+				return false
+			})
+		}
+
+		// 2. Queue MusicBrainz search if still missing textual info
+		if song.Artist == "" || song.Title == "" || song.Album == "" || song.AlbumYear == "" {
 			query := song.Name
 			if song.Artist != "" && song.Title != "" {
 				query = fmt.Sprintf("%s %s", song.Artist, song.Title)
@@ -687,7 +753,8 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 					return false
 				})
 
-				if song.CoverArtURL != "" {
+				// Only download remote cover if no embedded cover exists
+				if len(song.CoverData) == 0 && song.CoverArtURL != "" {
 					imgData, err := audio.DownloadImage(song.CoverArtURL)
 					if err == nil {
 						glib.IdleAdd(func() bool {
@@ -715,11 +782,33 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 	if err != nil {
 		return
 	}
-	scaled, err := pixbuf.ScaleSimple(280, 280, gdk.INTERP_BILINEAR)
+
+	const boxSize = 280
+	pw := pixbuf.GetWidth()
+	ph := pixbuf.GetHeight()
+
+	scaleX := float64(boxSize) / float64(pw)
+	scaleY := float64(boxSize) / float64(ph)
+	scale := scaleX
+	if scaleY < scale {
+		scale = scaleY
+	}
+
+	newW := int(float64(pw) * scale)
+	newH := int(float64(ph) * scale)
+
+	dest, err := gdk.PixbufNew(gdk.COLORSPACE_RGB, true, 8, boxSize, boxSize)
 	if err != nil {
 		return
 	}
-	mw.albumCover.SetFromPixbuf(scaled)
+	dest.Fill(0)
+
+	offsetX := (boxSize - newW) / 2
+	offsetY := (boxSize - newH) / 2
+
+	pixbuf.Scale(dest, offsetX, offsetY, newW, newH, float64(offsetX), float64(offsetY), scale, scale, gdk.INTERP_BILINEAR)
+
+	mw.albumCover.SetFromPixbuf(dest)
 }
 
 func isSupported(ext string) bool {
