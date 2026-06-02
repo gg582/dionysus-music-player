@@ -31,10 +31,12 @@ type MainWindow struct {
 	win              *gtk.Window
 	listBox          *gtk.ListBox
 	timeLabel        *gtk.Label
+	totalTimeLabel   *gtk.Label
 	progressBar      *gtk.Scale
 	lyricsView       *gtk.TextView
 	albumCover       *gtk.Image
 	albumTitle       *gtk.Label
+	albumArtist      *gtk.Label
 	albumYear        *gtk.Label
 	player           *audio.Player
 	songs            []models.Song
@@ -45,6 +47,7 @@ type MainWindow struct {
 	currentLyricLine int
 	gtkSettings      *gtk.Settings
 	desktopSettings  *glib.Settings
+	seeking          bool
 }
 
 func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
@@ -102,10 +105,22 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 		mw.albumYear, _ = obj.(*gtk.Label)
 	}
 
+	obj, err = builder.GetObject("AlbumArtist")
+	utils.ErrorHandler(err, "getting AlbumArtist", logLevel, "warn")
+	if obj != nil {
+		mw.albumArtist, _ = obj.(*gtk.Label)
+	}
+
 	obj, err = builder.GetObject("Time")
 	utils.ErrorHandler(err, "getting Time label", logLevel, "warn")
 	if obj != nil {
 		mw.timeLabel, _ = obj.(*gtk.Label)
+	}
+
+	obj, err = builder.GetObject("TotalTime")
+	utils.ErrorHandler(err, "getting TotalTime label", logLevel, "warn")
+	if obj != nil {
+		mw.totalTimeLabel, _ = obj.(*gtk.Label)
 	}
 
 	obj, err = builder.GetObject("MusicProgress")
@@ -134,6 +149,56 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	}
 
 	mw.setupControls(builder)
+
+	// Keyboard shortcuts
+	mw.win.Connect("key-press-event", func(win *gtk.Window, event *gdk.Event) bool {
+		ev := gdk.EventKeyNewFromEvent(event)
+		switch ev.KeyVal() {
+		case gdk.KEY_space:
+			if mw.player != nil && mw.player.IsPlaying() {
+				mw.onPause()
+			} else {
+				mw.onPlay()
+			}
+			return true
+		case gdk.KEY_Delete:
+			mw.removeSelectedSong()
+			return true
+		case gdk.KEY_o:
+			if ev.State()&gdk.CONTROL_MASK != 0 {
+				mw.onFileOpen()
+				return true
+			}
+		case gdk.KEY_d:
+			if ev.State()&gdk.CONTROL_MASK != 0 {
+				mw.onOpenCD()
+				return true
+			}
+		}
+		return false
+	})
+
+	// Double-click to play
+	if mw.listBox != nil {
+		mw.listBox.Connect("row-activated", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
+			if row != nil {
+				mw.selectedIdx = row.GetIndex()
+				mw.onPlay()
+			}
+		})
+	}
+
+	// Seek drag handling
+	if mw.progressBar != nil {
+		mw.progressBar.Connect("button-press-event", func() bool {
+			mw.seeking = true
+			return false
+		})
+		mw.progressBar.Connect("button-release-event", func() bool {
+			mw.seeking = false
+			return false
+		})
+	}
 
 	mw.player, err = audio.NewPlayer()
 	utils.ErrorHandler(err, "creating audio player", logLevel, "warn")
@@ -164,7 +229,7 @@ func applyAppTheme() {
 	if screen == nil {
 		return
 	}
-	gtk.AddProviderForScreen(screen, provider, uint(gtk.STYLE_PROVIDER_PRIORITY_APPLICATION))
+	gtk.AddProviderForScreen(screen, provider, uint(gtk.STYLE_PROVIDER_PRIORITY_USER))
 }
 
 func (mw *MainWindow) bindSystemTheme(settings *gtk.Settings) {
@@ -409,17 +474,31 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 		return
 	}
 
-	box, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	box, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	if err != nil {
 		return
 	}
 
-	label, err := gtk.LabelNew(song.Name)
+	infoBox, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
 	if err != nil {
 		return
 	}
-	label.SetHAlign(gtk.ALIGN_START)
-	label.SetEllipsize(pango.ELLIPSIZE_END)
+	infoBox.SetHExpand(true)
+
+	titleLabel, err := gtk.LabelNew("")
+	if err != nil {
+		return
+	}
+	titleLabel.SetHAlign(gtk.ALIGN_START)
+	titleLabel.SetEllipsize(pango.ELLIPSIZE_END)
+
+	display := song.Name
+	if song.Artist != "" {
+		display = fmt.Sprintf("%s  <span size=\"small\" alpha=\"60%%\">%s</span>", song.Name, song.Artist)
+	}
+	titleLabel.SetMarkup(display)
+
+	infoBox.PackStart(titleLabel, false, false, 0)
 
 	btn, err := gtk.ButtonNewWithLabel("×")
 	if err != nil {
@@ -440,9 +519,10 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 		} else if mw.selectedIdx > idx {
 			mw.selectedIdx--
 		}
+		mw.refreshPlayingHighlight()
 	})
 
-	box.PackStart(label, true, true, 0)
+	box.PackStart(infoBox, true, true, 0)
 	box.PackEnd(btn, false, false, 0)
 	row.Add(box)
 	row.ShowAll()
@@ -501,6 +581,7 @@ func (mw *MainWindow) onPlay() {
 	mw.loadSongInfo(&mw.songs[idx])
 	mw.loadLyrics(&mw.songs[idx])
 	mw.startTicker()
+	mw.refreshPlayingHighlight()
 }
 
 func (mw *MainWindow) onPause() {
@@ -517,9 +598,13 @@ func (mw *MainWindow) onStop() {
 	if mw.timeLabel != nil {
 		mw.timeLabel.SetText("00:00")
 	}
+	if mw.totalTimeLabel != nil {
+		mw.totalTimeLabel.SetText("00:00")
+	}
 	if mw.progressBar != nil {
 		mw.progressBar.SetValue(0)
 	}
+	mw.refreshPlayingHighlight()
 }
 
 func (mw *MainWindow) startTicker() {
@@ -538,8 +623,11 @@ func (mw *MainWindow) startTicker() {
 					length := mw.player.Length()
 					if mw.timeLabel != nil {
 						mw.timeLabel.SetText(formatDuration(pos))
+							if mw.totalTimeLabel != nil {
+								mw.totalTimeLabel.SetText(formatDuration(length))
+							}
 					}
-					if mw.progressBar != nil && length > 0 {
+					if mw.progressBar != nil && length > 0 && !mw.seeking {
 						pct := float64(pos) / float64(length) * 100.0
 						mw.progressBar.SetValue(pct)
 					}
@@ -742,6 +830,13 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 							text = " "
 						}
 						mw.albumTitle.SetText(text)
+						if mw.albumArtist != nil {
+							text := song.Artist
+							if text == "" {
+								text = " "
+							}
+							mw.albumArtist.SetText(text)
+						}
 					}
 					if mw.albumYear != nil {
 						text := song.AlbumYear
@@ -809,6 +904,47 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 	pixbuf.Scale(dest, offsetX, offsetY, newW, newH, float64(offsetX), float64(offsetY), scale, scale, gdk.INTERP_BILINEAR)
 
 	mw.albumCover.SetFromPixbuf(dest)
+}
+
+func (mw *MainWindow) refreshPlayingHighlight() {
+	if mw.listBox == nil {
+		return
+	}
+	for i := 0; i < len(mw.songs); i++ {
+		if r := mw.listBox.GetRowAtIndex(i); r != nil {
+			if ctx, err := r.GetStyleContext(); err == nil {
+				ctx.RemoveClass("playing")
+			}
+		}
+	}
+	if mw.player != nil && mw.player.IsPlaying() && mw.selectedIdx >= 0 && mw.selectedIdx < len(mw.songs) {
+		if r := mw.listBox.GetRowAtIndex(mw.selectedIdx); r != nil {
+			if ctx, err := r.GetStyleContext(); err == nil {
+				ctx.AddClass("playing")
+			}
+		}
+	}
+}
+
+func (mw *MainWindow) removeSelectedSong() {
+	if mw.listBox == nil {
+		return
+	}
+	row := mw.listBox.GetSelectedRow()
+	if row == nil {
+		return
+	}
+	idx := row.GetIndex()
+	mw.listBox.Remove(row)
+	if idx >= 0 && idx < len(mw.songs) {
+		mw.songs = append(mw.songs[:idx], mw.songs[idx+1:]...)
+	}
+	if mw.selectedIdx == idx {
+		mw.selectedIdx = -1
+	} else if mw.selectedIdx > idx {
+		mw.selectedIdx--
+	}
+	mw.refreshPlayingHighlight()
 }
 
 func isSupported(ext string) bool {
