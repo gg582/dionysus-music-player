@@ -1,0 +1,177 @@
+* {
+  font-size: 13px;
+}
+
+window {
+  background: #f5f5f5;
+}
+
+window.theme-dark {
+  background: #101010;
+}
+
+box {
+  background: transparent;
+}
+
+window.theme-light * {
+  color: #202020;
+}
+
+window.theme-dark * {
+  color: #eeeeee;
+}
+
+window.theme-light grid {
+  background: #fafafa;
+  border: 1px solid #d7d7d7;
+}
+
+window.theme-dark grid {
+  background: #191919;
+  border: 1px solid #343434;
+}
+
+grid {
+  border-radius: 2px;
+  padding: 14px;
+}
+
+window.theme-light image {
+  background: #eeeeee;
+  border: 1px solid #d0d0d0;
+  color: #606060;
+}
+
+window.theme-dark image {
+  background: #202020;
+  border: 1px solid #3a3a3a;
+  color: #9e9e9e;
+}
+
+image {
+  border-radius: 2px;
+  padding: 16px;
+}
+
+label {
+  font-weight: 500;
+}
+
+window.theme-light list,
+window.theme-light listbox,
+window.theme-light treeview {
+  background: #ffffff;
+  border: 1px solid #d0d0d0;
+}
+
+window.theme-dark list,
+window.theme-dark listbox,
+window.theme-dark treeview {
+  background: #121212;
+  border: 1px solid #373737;
+}
+
+list,
+listbox,
+treeview {
+  border-radius: 2px;
+}
+
+list row {
+  padding: 7px 10px;
+  border-radius: 0;
+}
+
+window.theme-light list row:hover {
+  background: #edf9fc;
+}
+
+window.theme-dark list row:hover {
+  background: #202d30;
+}
+
+window.theme-light list row:selected,
+window.theme-light treeview:selected {
+  background: #33b5e5;
+  color: #ffffff;
+}
+
+window.theme-dark list row:selected,
+window.theme-dark treeview:selected {
+  background: #0099cc;
+  color: #ffffff;
+}
+
+button {
+  min-height: 28px;
+  min-width: 28px;
+  border-radius: 2px;
+  padding: 4px 10px;
+}
+
+window.theme-light button {
+  background: #f7f7f7;
+  border: 1px solid #c8c8c8;
+  color: #202020;
+}
+
+window.theme-dark button {
+  background: #242424;
+  border: 1px solid #4a4a4a;
+  color: #eeeeee;
+}
+
+window.theme-light button:hover {
+  background: #e7f7fb;
+  border-color: #33b5e5;
+}
+
+window.theme-dark button:hover {
+  background: #26383d;
+  border-color: #33b5e5;
+}
+
+window.theme-light button:active,
+window.theme-dark button:active {
+  background: #0099cc;
+  border-color: #0099cc;
+  color: #ffffff;
+}
+
+scale trough {
+  min-height: 4px;
+  border-radius: 0;
+}
+
+window.theme-light scale trough {
+  background: #cfcfcf;
+}
+
+window.theme-dark scale trough {
+  background: #3a3a3a;
+}
+
+scale highlight {
+  border-radius: 0;
+  background: #33b5e5;
+}
+
+scale slider {
+  min-width: 14px;
+  min-height: 14px;
+  margin: -6px;
+  border-radius: 999px;
+  background: #33b5e5;
+  border: 2px solid #ffffff;
+}
+
+window.theme-dark scale slider {
+  border-color: #101010;
+}
+
+volumebutton button {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}

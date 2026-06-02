@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Dionysus
+Comment=Simple GTK music player
+Exec=dionysus
+Icon=dionysus
+Type=Application
+Categories=AudioVideo;Audio;Player;
+Terminal=false

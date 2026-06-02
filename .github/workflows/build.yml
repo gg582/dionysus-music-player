@@ -1,0 +1,128 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            output: dionysus-linux-amd64
+            native: true
+          - platform: linux/arm64
+            output: dionysus-linux-arm64
+            native: false
+          - platform: linux/riscv64
+            output: dionysus-linux-riscv64
+            native: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Build native amd64
+        if: matrix.native
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev
+          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/dionysus
+      - name: Set up QEMU
+        if: ${{ !matrix.native }}
+        uses: docker/setup-qemu-action@v3
+      - name: Build in container
+        if: ${{ !matrix.native }}
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/workspace" -w /workspace \
+            golang:1.25 bash -c "
+              apt-get update && apt-get install -y libgtk-3-dev
+              go build -ldflags='-s -w' -o ${{ matrix.output }} ./cmd/dionysus
+            "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            msystem: MINGW64
+            output: dionysus-windows-amd64.exe
+          - arch: arm64
+            output: dionysus-windows-arm64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Setup MSYS2
+        if: matrix.arch == 'amd64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-pkg-config
+      - name: Build amd64
+        if: matrix.arch == 'amd64'
+        shell: msys2 {0}
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/dionysus
+      - name: Build arm64 (experimental)
+        if: matrix.arch == 'arm64'
+        continue-on-error: true
+        run: |
+          Write-Host "Windows/arm64 cross-compile with CGO is experimental"
+          choco install llvm
+          $env:CC = "clang"
+          $env:GOARCH = "arm64"
+          $env:CGO_ENABLED = "1"
+          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/dionysus
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'amd64' || success()
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            output: dionysus-darwin-arm64
+          - os: macos-13
+            arch: amd64
+            output: dionysus-darwin-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Install dependencies
+        run: |
+          brew install gtk+3 pkg-config
+      - name: Build
+        run: |
+          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/dionysus
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
