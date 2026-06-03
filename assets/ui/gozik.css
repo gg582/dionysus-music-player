@@ -1,261 +1,350 @@
+/* ============================================================
+   GOZIK — Deep-Cosmic theme (GTK3 port of main.html / cosmos.css)
+   Dark-only. No purple. Atmosphere via background gradients only
+   (GTK3 has no multi-shadow starfield / @keyframes / pseudo-nodes,
+   so the HTML mockup's starfield, gold pulse and cover corona are
+   intentionally omitted here).
+   Palette tokens use GTK's @define-color (GTK3 has no CSS var()).
+   ============================================================ */
+
+@define-color abyss0 #05070D;
+@define-color abyss1 #070A12;
+@define-color abyss2 #0A0E18;
+@define-color cyan        #5FD3E0;
+@define-color cyan_bright #6FE0EE;
+@define-color gold        #E8C879;
+@define-color text1 #E6EAF2;
+@define-color text2 #8A93A6;
+@define-color text3 #515A6E;
+
+/* ---------- base ---------- */
 * {
   font-family: "Inter", "Segoe UI", "Noto Sans", sans-serif;
   font-size: 14px;
   outline: none;
 }
 
-/* Window background */
 window {
-  background: #f2f2f7;
+  color: @text1;
+  background-color: @abyss1;
+  background-image:
+    url("stars.png"),
+    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.075), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.04), transparent),
+    radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.50));
+  background-repeat: no-repeat;
+  background-position: top left;   /* match the mockup's inset:0 starfield (main + dialog) */
 }
 
-window.theme-dark {
-  background: #000000;
-}
+/* keep theme classes harmless (theme is forced dark in Go) */
+window.theme-light, window.theme-dark { background-color: @abyss1; }
 
-/* Main card panel */
-window.theme-light grid {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+label { color: @text1; }
+
+/* ---------- player card (the grid) ---------- */
+#SongPlayerWidget {
+  background-color: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 24px;
-  padding: 28px;
+  padding: 24px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
-window.theme-dark grid {
-  background: #121212;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 24px;
-  padding: 28px;
-}
-
-/* Album cover */
+/* ---------- album cover (empty state = clean cosmic box) ---------- */
 #AlbumCover {
   border-radius: 14px;
   padding: 0;
+  border: 1px solid rgba(95,211,224,0.18);
+  background-color: #06080F;
+  background-image:
+    radial-gradient(farthest-side at 32% 24%, rgba(95,211,224,0.10), transparent),
+    radial-gradient(farthest-side at 72% 84%, rgba(95,211,224,0.05), transparent);
 }
 
-/* Typography hierarchy */
-#AlbumTitle {
+/* ---------- typography hierarchy ---------- */
+#AlbumTitle  { color: @text1; font-weight: bold; font-size: 20px; }
+#AlbumArtist { color: @text2; font-weight: 500;  font-size: 14px; }
+#AlbumYear   { color: @text3; font-weight: 500;  font-size: 11px; }
+
+#Time, #TotalTime {
+  font-family: monospace;
+  font-size: 12px;
   font-weight: bold;
-  font-size: 20px;
+  color: @text2;
 }
 
-#AlbumArtist {
-  font-weight: 500;
-  font-size: 14px;
-  opacity: 0.6;
-}
-
-#AlbumYear {
-  font-weight: 500;
+/* ---------- queue header ---------- */
+#QueueLabel {
   font-size: 11px;
-  opacity: 0.35;
+  font-weight: bold;
+  color: @text3;
 }
-
-#Time,
-#TotalTime {
+#QueueCount {
   font-family: monospace;
   font-size: 11px;
-  font-weight: bold;
-  opacity: 0.45;
+  color: @text3;
+}
+#VolumeIcon {
+  color: @text2;
 }
 
-/* Song list */
-list {
-  border-radius: 12px;
-  background: transparent;
-  border: none;
+/* ---------- song list ---------- */
+#SonglistScroll {
+  background-color: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
 }
+list { background-color: transparent; border: none; }
 
 list row {
-  padding: 10px 16px;
-  border-radius: 10px;
-  margin: 2px 6px;
-}
-
-window.theme-light list {
-  background: transparent;
-}
-
-window.theme-dark list {
-  background: transparent;
-}
-
-window.theme-light list row {
-  color: #1c1c1e;
-}
-
-window.theme-dark list row {
-  color: #f5f5f7;
-}
-
-window.theme-light list row:hover {
-  background: rgba(0, 0, 0, 0.035);
-}
-
-window.theme-dark list row:hover {
-  background: rgba(255, 255, 255, 0.055);
-}
-
-window.theme-light list row:selected {
-  background: #007aff;
-  color: #ffffff;
-}
-
-window.theme-dark list row:selected {
-  background: #0a84ff;
-  color: #ffffff;
-}
-
-list row.playing {
-  background: rgba(0, 122, 255, 0.1);
-}
-
-window.theme-dark list row.playing {
-  background: rgba(10, 132, 255, 0.15);
-}
-
-list row:selected.playing {
-  background: #007aff;
-}
-
-window.theme-dark list row:selected.playing {
-  background: #0a84ff;
-}
-
-/* Buttons */
-button {
-  min-height: 32px;
-  min-width: 32px;
+  padding: 8px 12px;
   border-radius: 8px;
-  padding: 4px 10px;
-  border: none;
+  margin: 2px 6px;
+  color: @text1;
+  background-color: transparent;
+}
+list row:hover    { background-color: rgba(255,255,255,0.05); }
+list row:selected {
+  background-color: rgba(95,211,224,0.08);
+  box-shadow: inset 0 0 0 1px rgba(95,211,224,0.24);
+  color: @text1;
+}
+list row.playing {
+  background-color: rgba(95,211,224,0.12);
+  color: @cyan_bright;
+}
+list row:selected.playing { background-color: rgba(95,211,224,0.16); color: @cyan_bright; }
+
+/* per-row × remove button (added in Go) — revealed on row hover */
+list row button {
+  min-width: 22px; min-height: 22px;
+  padding: 0; border-radius: 6px;
+  background-color: transparent; border: none;
+  color: @text3;
+  opacity: 0;
+}
+list row:hover button { opacity: 1; }
+list row button:hover { background-color: rgba(255,255,255,0.08); color: @text1; }
+
+/* ---------- transport buttons (symbolic icons) ---------- */
+button {
+  min-height: 34px;
+  min-width: 34px;
+  border-radius: 8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  background-image: none;            /* kill Adwaita's button gradient → flat ghost */
+  background-color: transparent;
+  box-shadow: none;
+  color: @text2;
   font-weight: bold;
 }
-
-window.theme-light button {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1c1c1e;
+button:hover  { background-color: rgba(255,255,255,0.05); color: @text1; }
+button:active { background-color: rgba(95,211,224,0.16); color: @cyan_bright; }
+button:checked { background-color: rgba(95,211,224,0.16); color: @cyan_bright; }
+/* engaged transport key (the current play/pause/stop mode) — set from Go */
+button.engaged {
+  background-color: rgba(95,211,224,0.16);
+  color: @cyan_bright;
+  border-color: rgba(95,211,224,0.24);
 }
+button image { color: inherit; -gtk-icon-shadow: none; }
 
-window.theme-dark button {
-  background: rgba(255, 255, 255, 0.1);
-  color: #f5f5f7;
-}
-
-window.theme-light button:hover {
-  background: rgba(0, 0, 0, 0.09);
-}
-
-window.theme-dark button:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-window.theme-light button:active {
-  background: #007aff;
-  color: #ffffff;
-}
-
-window.theme-dark button:active {
-  background: #0a84ff;
-  color: #ffffff;
-}
-
-#BtnOpen,
-#BtnOpenCD {
+/* Open / Open CD — ghost surface buttons */
+#BtnOpen, #BtnOpenCD {
   border-radius: 10px;
-  padding: 6px 16px;
+  padding: 3px 16px 1px 16px;
+  background-image: none;
+  background-color: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: @text1;
+  font-weight: 500;
+}
+#BtnOpen:hover, #BtnOpenCD:hover {
+  background-color: rgba(255,255,255,0.08);
+  border-color: rgba(95,211,224,0.30);
+}
+/* the small leading dot inside Open / Open CD (matches the mockup .obtn .dot) */
+#btn-dot {
+  color: @text3;
+  font-size: 18px;
 }
 
-/* Progress scale */
+/* ---------- seek scale ---------- */
+scale { padding: 0; }
 scale trough {
   min-height: 4px;
-  border-radius: 2px;
+  border-radius: 999px;
+  background-image: none;
+  background-color: rgba(255,255,255,0.08);
+  border: none;
 }
-
-window.theme-light scale trough {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-window.theme-dark scale trough {
-  background: rgba(255, 255, 255, 0.15);
-}
-
 scale highlight {
-  border-radius: 2px;
-  background: #007aff;
+  border-radius: 999px;
+  background-image: none;
+  background-color: @cyan;
 }
-
-window.theme-dark scale highlight {
-  background: #0a84ff;
-}
-
 scale slider {
   min-width: 14px;
   min-height: 14px;
   margin: -6px;
   border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid #007aff;
+  background-color: @abyss2;
+  border: 2px solid @cyan;
+  box-shadow: 0 0 8px rgba(95,211,224,0.5);
 }
 
-window.theme-dark scale slider {
-  background: #f5f5f7;
-  border-color: #0a84ff;
+/* volume slider: trough half the thickness of the seek bar */
+#VolumeScale trough { min-height: 2px; }
+#VolumeScale slider { min-width: 12px; min-height: 12px; box-shadow: none; }
+/* muted state: gray trough + gray knob (like the sample) */
+#VolumeScale.muted highlight { background-color: rgba(230,234,242,0.40); }
+#VolumeScale.muted slider {
+  background-color: @text3;
+  border-color: rgba(230,234,242,0.45);
 }
 
-/* Scrollbars */
+/* ---------- scrollbars ---------- */
+scrollbar { background-color: transparent; border: none; }
 scrollbar slider {
-  min-width: 4px;
-  min-height: 4px;
-  border-radius: 2px;
-  background: rgba(128, 128, 128, 0.22);
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 999px;
+  background-color: rgba(255,255,255,0.10);
   margin: 2px;
 }
+scrollbar slider:hover { background-color: rgba(255,255,255,0.20); }
 
-scrollbar slider:hover {
-  background: rgba(128, 128, 128, 0.48);
+/* ---------- lyrics panel ---------- */
+#LyricsScroll {
+  background-color: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
 }
-
-/* Lyrics text view */
 textview {
   font-family: "Inter", sans-serif;
   font-size: 14px;
+  background-color: transparent;
 }
-
-window.theme-light textview {
-  color: #3a3a3c;
+textview text {
+  background-color: transparent;
+  color: @text2;
 }
-
-window.theme-dark textview {
-  color: #e5e5ea;
-}
-
 textview text selection {
-  background: #007aff;
-  color: #ffffff;
+  background-color: rgba(95,211,224,0.18);
+  color: @cyan_bright;
 }
 
-window.theme-dark textview text selection {
-  background: #0a84ff;
-}
-
-/* Volume button */
+/* ---------- volume button ---------- */
 volumebutton button {
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 34px;
+  min-height: 34px;
   padding: 0;
   border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.06);
+  background-color: transparent;
+  color: @text2;
 }
+volumebutton button:hover { background-color: rgba(255,255,255,0.05); color: @text1; }
 
 button image {
   padding: 0;
   border: none;
-  background: transparent;
+  background-color: transparent;
 }
 
-window.theme-light button image,
-window.theme-dark button image {
-  border: none;
-  background: transparent;
+/* ---------- songlist rows (built in Go) ---------- */
+#row-lead {
+  font-family: monospace;
+  font-size: 12px;
+  color: @text3;
+}
+#row-title  { color: @text1; font-size: 14px; }
+#row-artist { color: @text3; font-size: 11px; }
+#row-dur    { font-family: monospace; font-size: 12px; color: @text3; }
+list row:hover #row-dur { color: @text2; }
+
+/* ---------- custom Open dialog (filedialog.go, mirrors open.html) ---------- */
+/* #FileDialog window inherits the cosmic window bg (abyss + nebula + stars) */
+separator {
+  background-image: none;
+  background-color: rgba(255,255,255,0.06);
+  min-width: 1px;
+  min-height: 1px;
+}
+#fd-path { color: @text2; font-size: 13px; }
+entry {
+  background-image: none;
+  background-color: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 999px;
+  color: @text2;
+  padding: 4px 12px;
+}
+entry:focus { border-color: rgba(95,211,224,0.30); }
+entry image { color: @text3; }
+#fd-places, #fd-filelist { background-color: transparent; }
+/* nudge sidebar row text down so it doesn't sit high */
+#fd-places row { padding: 10px 12px 6px 12px; }
+#fd-place-icon, #fd-folder-icon { color: @text2; }
+#fd-audio-icon { color: @cyan; }
+#fd-col { font-size: 10px; font-weight: bold; color: @text3; }
+#fd-name { color: @text1; font-size: 13px; }
+#fd-meta { color: @text3; font-size: 12px; }
+#fd-selinfo { color: @text3; font-family: monospace; font-size: 12px; }
+
+/* sidebar group headers */
+#fd-side-header { font-size: 10px; font-weight: bold; color: @text3; }
+
+/* breadcrumb */
+#fd-crumb {
+  background-image: none;
+  background-color: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  min-height: 0;
+  padding: 2px 6px;
+  color: @text2;
+  font-weight: 500;
+  font-size: 13px;
+}
+#fd-crumb:hover { background-color: rgba(255,255,255,0.05); color: @text1; }
+#fd-crumb.current label { color: @text1; }
+#fd-crumb-sep { color: @text3; font-size: 12px; }
+
+/* footer buttons (Open is the single cyan primary) */
+button.btn-ghost {
+  background-image: none;
+  background-color: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 2px 20px 1px 20px;
+  font-weight: 500;
+}
+button.btn-ghost label { color: @text1; }
+button.btn-ghost:hover {
+  background-color: rgba(255,255,255,0.08);
+  border-color: rgba(95,211,224,0.30);
+}
+button.btn-primary {
+  background-image: none;
+  background-color: rgba(95,211,224,0.16);
+  border: 1px solid @cyan;
+  border-radius: 10px;
+  padding: 2px 24px 1px 24px;
+  font-weight: bold;
+}
+button.btn-primary label { color: @cyan_bright; }
+button.btn-primary:hover { background-color: rgba(95,211,224,0.24); }
+
+/* playing row: cyan title + gold lighthouse pulse on the leading dot */
+list row.playing #row-title { color: @cyan_bright; }
+list row.playing #row-lead {
+  color: @gold;
+  animation: gozik-pulse 2.4s ease-in-out infinite;
+}
+@keyframes gozik-pulse {
+  0%   { opacity: 0.40; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.40; }
 }

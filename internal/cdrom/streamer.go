@@ -2,6 +2,8 @@ package cdrom
 
 import (
 	"encoding/binary"
+	"errors"
+	"sync/atomic"
 )
 
 // TrackStreamer implements beep.StreamSeeker for a CD audio track.
@@ -14,6 +16,8 @@ type TrackStreamer struct {
 	bufPos       int
 	totalSamples int
 	err          error
+	closed       atomic.Bool
+	posSamples   atomic.Int64
 }
 
 // NewTrackStreamer creates a streamer for the given track.
@@ -28,11 +32,14 @@ func NewTrackStreamer(dev *Device, track Track) *TrackStreamer {
 }
 
 func (s *TrackStreamer) fillBuf() error {
+	if s.closed.Load() {
+		return errors.New("cd track streamer closed")
+	}
 	if s.readLBA >= s.endLBA {
 		s.buf = nil
 		return nil
 	}
-	frames := 25
+	frames := 4
 	if s.readLBA+frames > s.endLBA {
 		frames = s.endLBA - s.readLBA
 	}
@@ -48,7 +55,7 @@ func (s *TrackStreamer) fillBuf() error {
 
 // Stream implements beep.Streamer.
 func (s *TrackStreamer) Stream(samples [][2]float64) (int, bool) {
-	if s.err != nil {
+	if s.closed.Load() || s.err != nil {
 		return 0, false
 	}
 	n := 0
@@ -70,6 +77,7 @@ func (s *TrackStreamer) Stream(samples [][2]float64) (int, bool) {
 			s.bufPos += 4
 			n++
 		}
+		s.posSamples.Store(int64(s.positionLocked()))
 	}
 	return n, true
 }
@@ -79,8 +87,12 @@ func (s *TrackStreamer) Err() error {
 	return s.err
 }
 
-// Close implements beep.StreamSeekCloser (no-op; device is owned by Player).
+// Close implements beep.StreamSeekCloser. The device is owned by Player, but
+// this lets the speaker goroutine stop asking for more samples immediately.
 func (s *TrackStreamer) Close() error {
+	s.closed.Store(true)
+	s.buf = nil
+	s.bufPos = 0
 	return nil
 }
 
@@ -91,6 +103,10 @@ func (s *TrackStreamer) Len() int {
 
 // Position implements beep.StreamSeeker.
 func (s *TrackStreamer) Position() int {
+	return int(s.posSamples.Load())
+}
+
+func (s *TrackStreamer) positionLocked() int {
 	totalBytes := (s.readLBA - s.startLBA) * CD_FRAME_SIZE
 	totalBytes -= len(s.buf)
 	totalBytes += s.bufPos
@@ -99,6 +115,9 @@ func (s *TrackStreamer) Position() int {
 
 // Seek implements beep.StreamSeeker.
 func (s *TrackStreamer) Seek(p int) error {
+	if s.closed.Load() {
+		return errors.New("cd track streamer closed")
+	}
 	if p < 0 {
 		p = 0
 	}
@@ -110,6 +129,7 @@ func (s *TrackStreamer) Seek(p int) error {
 	offset := totalBytes % CD_FRAME_SIZE
 
 	s.readLBA = s.startLBA + frame
+	s.posSamples.Store(int64(p))
 	if s.readLBA >= s.endLBA {
 		s.readLBA = s.endLBA
 		s.buf = nil

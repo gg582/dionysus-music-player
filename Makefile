@@ -41,6 +41,7 @@ install: icons
 	install -Dm755 $(BINARY) $(BINDIR)/$(BINARY)
 	install -Dm644 assets/ui/gozik-main-window.glade $(DATADIR)/gozik/ui/gozik-main-window.glade
 	install -Dm644 assets/ui/gozik.css $(DATADIR)/gozik/ui/gozik.css
+	install -Dm644 assets/ui/stars.png $(DATADIR)/gozik/ui/stars.png
 	install -Dm644 assets/gozik.desktop $(APPLICATIONSDIR)/gozik.desktop
 	@for size in $(ICON_SIZES); do \
 		install -Dm644 assets/icons/hicolor/$${size}x$${size}/apps/gozik.png $(ICONDIR)/$${size}x$${size}/apps/gozik.png; \
