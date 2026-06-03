@@ -11,6 +11,7 @@ type Song struct {
 	Title       string
 	Album       string
 	AlbumYear   string
+	Duration    int // seconds
 	Lyrics      string
 	CoverArtURL string
 	CoverData   []byte

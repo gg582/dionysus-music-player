@@ -4,207 +4,279 @@
   outline: none;
 }
 
-/* Window background */
+/* ==========================================================
+   Window Backgrounds — Wallpaper + Native Light / Dark
+   ========================================================== */
 window {
-  background: #f2f2f7;
+  background: #F9F9F7;
+  background-image: url("../bg/light.png");
+  background-size: cover;
+  background-position: right bottom;
 }
 
 window.theme-dark {
-  background: #000000;
+  background: #1E1E1C;
+  background-image: url("../bg/dark.png");
+  background-size: cover;
+  background-position: right bottom;
 }
 
-/* Main card panel */
+/* ==========================================================
+   Main Card Panel — Semi-transparent so wallpaper peeks through
+   ========================================================== */
 window.theme-light grid {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(44, 44, 42, 0.08);
+  border-radius: 6px;
   padding: 28px;
+  box-shadow:
+    0 4px 12px rgba(60, 55, 50, 0.08),
+    0 1px 3px rgba(60, 55, 50, 0.04);
 }
 
 window.theme-dark grid {
-  background: #121212;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 24px;
+  background: rgba(42, 42, 40, 0.78);
+  border: 1px solid rgba(240, 240, 236, 0.08);
+  border-radius: 6px;
   padding: 28px;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.30),
+    0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
-/* Album cover */
+/* ==========================================================
+   Album Cover — crisp edge, soft layered shadow
+   ========================================================== */
 #AlbumCover {
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 0;
+  box-shadow:
+    0 8px 24px rgba(60, 55, 50, 0.08),
+    0 4px 8px rgba(60, 55, 50, 0.04);
 }
 
-/* Typography hierarchy */
+window.theme-dark #AlbumCover {
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.30),
+    0 4px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* ==========================================================
+   Typography — warm charcoal / soft off-white
+   ========================================================== */
 #AlbumTitle {
-  font-weight: bold;
+  font-weight: 600;
   font-size: 20px;
+  letter-spacing: -0.02em;
+  color: #2C2C2A;
+}
+
+window.theme-dark #AlbumTitle {
+  color: #F0F0EC;
 }
 
 #AlbumArtist {
-  font-weight: 500;
+  font-weight: 400;
   font-size: 14px;
-  opacity: 0.6;
+  color: #6B6B66;
+}
+
+window.theme-dark #AlbumArtist {
+  color: #B8B8B2;
 }
 
 #AlbumYear {
   font-weight: 500;
   font-size: 11px;
-  opacity: 0.35;
+  color: #A3A39E;
+}
+
+window.theme-dark #AlbumYear {
+  color: #6B6B66;
 }
 
 #Time,
 #TotalTime {
-  font-family: monospace;
+  font-family: "Inter", monospace;
   font-size: 11px;
-  font-weight: bold;
-  opacity: 0.45;
+  font-weight: 600;
+  color: #A3A39E;
 }
 
-/* Song list */
+/* ==========================================================
+   Song List — cozy rows, terracotta accent pop
+   ========================================================== */
 list {
-  border-radius: 12px;
+  border-radius: 6px;
   background: transparent;
   border: none;
 }
 
 list row {
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: 4px;
   margin: 2px 6px;
 }
 
-window.theme-light list {
-  background: transparent;
-}
-
-window.theme-dark list {
-  background: transparent;
-}
-
 window.theme-light list row {
-  color: #1c1c1e;
+  color: #2C2C2A;
 }
 
 window.theme-dark list row {
-  color: #f5f5f7;
+  color: #F0F0EC;
 }
 
 window.theme-light list row:hover {
-  background: rgba(0, 0, 0, 0.035);
+  background: rgba(44, 44, 42, 0.035);
 }
 
 window.theme-dark list row:hover {
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(240, 240, 236, 0.055);
 }
 
+/* Selected / Active track — vivid terracotta */
 window.theme-light list row:selected {
-  background: #007aff;
-  color: #ffffff;
+  background: #D4654A;
+  color: #FFFFFF;
 }
 
 window.theme-dark list row:selected {
-  background: #0a84ff;
-  color: #ffffff;
+  background: #D4654A;
+  color: #FFFFFF;
 }
 
 list row.playing {
-  background: rgba(0, 122, 255, 0.1);
+  background: rgba(212, 101, 74, 0.10);
 }
 
 window.theme-dark list row.playing {
-  background: rgba(10, 132, 255, 0.15);
+  background: rgba(212, 101, 74, 0.15);
 }
 
 list row:selected.playing {
-  background: #007aff;
+  background: #D4654A;
 }
 
-window.theme-dark list row:selected.playing {
-  background: #0a84ff;
+/* TreeView base — transparent so grid wallpaper shows through */
+window.theme-light treeview {
+  background: transparent;
 }
 
-/* Buttons */
+window.theme-dark treeview {
+  background: transparent;
+}
+
+/* ==========================================================
+   Buttons — flat outlines, crisp 6px radius, cozy hover lift
+   ========================================================== */
 button {
   min-height: 32px;
   min-width: 32px;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 4px 10px;
-  border: none;
-  font-weight: bold;
+  border: 1px solid transparent;
+  font-weight: 600;
 }
 
 window.theme-light button {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1c1c1e;
+  background: rgba(44, 44, 42, 0.05);
+  color: #2C2C2A;
+  border-color: rgba(44, 44, 42, 0.08);
 }
 
 window.theme-dark button {
-  background: rgba(255, 255, 255, 0.1);
-  color: #f5f5f7;
+  background: rgba(240, 240, 236, 0.08);
+  color: #F0F0EC;
+  border-color: rgba(240, 240, 236, 0.10);
 }
 
 window.theme-light button:hover {
-  background: rgba(0, 0, 0, 0.09);
+  background: rgba(44, 44, 42, 0.08);
+  border-color: rgba(44, 44, 42, 0.12);
+  box-shadow: 0 2px 8px rgba(60, 55, 50, 0.06);
 }
 
 window.theme-dark button:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(240, 240, 236, 0.12);
+  border-color: rgba(240, 240, 236, 0.16);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
 }
 
 window.theme-light button:active {
-  background: #007aff;
-  color: #ffffff;
+  background: #D4654A;
+  color: #FFFFFF;
+  border-color: #D4654A;
 }
 
 window.theme-dark button:active {
-  background: #0a84ff;
-  color: #ffffff;
+  background: #D4654A;
+  color: #FFFFFF;
+  border-color: #D4654A;
 }
 
 #BtnOpen,
 #BtnOpenCD {
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 6px 16px;
 }
 
-/* Progress scale */
+/* Primary play/pause button — always pops */
+button#Play,
+button#Pause {
+  background: #D4654A;
+  color: #FFFFFF;
+  border-color: #D4654A;
+}
+
+window.theme-light button#Play:hover,
+window.theme-light button#Pause:hover,
+window.theme-dark button#Play:hover,
+window.theme-dark button#Pause:hover {
+  background: #C2553A;
+  border-color: #C2553A;
+  box-shadow: 0 4px 12px rgba(212, 101, 74, 0.25);
+}
+
+/* ==========================================================
+   Progress / Volume Scale — clean track, terracotta thumb
+   ========================================================== */
 scale trough {
   min-height: 4px;
   border-radius: 2px;
 }
 
 window.theme-light scale trough {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(44, 44, 42, 0.10);
 }
 
 window.theme-dark scale trough {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(240, 240, 236, 0.12);
 }
 
 scale highlight {
   border-radius: 2px;
-  background: #007aff;
+  background: #D4654A;
 }
 
-window.theme-dark scale highlight {
-  background: #0a84ff;
-}
-
+/* Thumb glows with accent for clear contrast */
 scale slider {
   min-width: 14px;
   min-height: 14px;
   margin: -6px;
   border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid #007aff;
+  background: #FFFFFF;
+  border: 2px solid #D4654A;
+  box-shadow: 0 0 0 3px rgba(212, 101, 74, 0.20);
 }
 
 window.theme-dark scale slider {
-  background: #f5f5f7;
-  border-color: #0a84ff;
+  background: #F0F0EC;
+  border-color: #D4654A;
 }
 
-/* Scrollbars */
+/* ==========================================================
+   Scrollbars
+   ========================================================== */
 scrollbar slider {
   min-width: 4px;
   min-height: 4px;
@@ -217,35 +289,65 @@ scrollbar slider:hover {
   background: rgba(128, 128, 128, 0.48);
 }
 
-/* Lyrics text view */
+/* ==========================================================
+   Lyrics Panel — semi-transparent card + transparent textview
+   ========================================================== */
+window.theme-light #LyricsScroll {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(44, 44, 42, 0.08);
+  border-radius: 6px;
+}
+
+window.theme-dark #LyricsScroll {
+  background: rgba(42, 42, 40, 0.78);
+  border: 1px solid rgba(240, 240, 236, 0.08);
+  border-radius: 6px;
+}
+
+/* Ensure wallpaper bleeds through containers */
+box {
+  background: transparent;
+}
+
+scrolledwindow viewport {
+  background: transparent;
+}
+
+/* Remove default inset shadows on scrolled windows */
+#SonglistScroll,
+#LyricsScroll {
+  box-shadow: none;
+  border: none;
+}
+
 textview {
   font-family: "Inter", sans-serif;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 window.theme-light textview {
-  color: #3a3a3c;
+  background: transparent;
+  color: #3A3A36;
 }
 
 window.theme-dark textview {
-  color: #e5e5ea;
+  background: transparent;
+  color: #E5E5E0;
 }
 
 textview text selection {
-  background: #007aff;
-  color: #ffffff;
+  background: #D4654A;
+  color: #FFFFFF;
 }
 
-window.theme-dark textview text selection {
-  background: #0a84ff;
-}
-
-/* Volume button */
+/* ==========================================================
+   Volume Button — geometric square (6px), not circular
+   ========================================================== */
 volumebutton button {
   min-width: 32px;
   min-height: 32px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 6px;
 }
 
 button image {

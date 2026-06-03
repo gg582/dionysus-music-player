@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"os"
+	"runtime"
+	"runtime/debug"
 
 	"github.com/gg582/gozik/internal/ui"
 	"github.com/gotk3/gotk3/glib"
@@ -12,6 +14,8 @@ import (
 const appID = "com.gosuda.gozik.player"
 
 func main() {
+	configureRuntime()
+
 	app, err := gtk.ApplicationNew(appID, glib.APPLICATION_FLAGS_NONE)
 	if err != nil {
 		log.Fatal("Could not create application:", err)
@@ -26,4 +30,11 @@ func main() {
 	})
 
 	os.Exit(app.Run(os.Args))
+}
+
+func configureRuntime() {
+	if runtime.GOMAXPROCS(0) < 2 {
+		runtime.GOMAXPROCS(2)
+	}
+	debug.SetGCPercent(200)
 }

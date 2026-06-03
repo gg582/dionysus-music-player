@@ -111,15 +111,16 @@
                     <property name="can-focus">True</property>
                     <property name="hexpand">True</property>
                     <property name="vexpand">True</property>
-                    <property name="shadow-type">in</property>
+                    <property name="shadow-type">none</property>
                     <child>
-                      <object class="GtkListBox" id="Songlist">
+                      <object class="GtkTreeView" id="Songlist">
                         <property name="visible">True</property>
-                        <property name="can-focus">False</property>
+                        <property name="can-focus">True</property>
                         <property name="width-request">420</property>
                         <property name="height-request">320</property>
                         <property name="hexpand">True</property>
                         <property name="vexpand">True</property>
+                        <property name="headers-visible">False</property>
                       </object>
                     </child>
                   </object>
@@ -345,6 +346,38 @@ audio-volume-medium-symbolic</property>
                   </packing>
                 </child>
 
+                <child>
+                  <object class="GtkButton" id="BtnRemove">
+                    <property name="label">×</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="width-request">48</property>
+                    <property name="height-request">32</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">2</property>
+                    <property name="top-attach">10</property>
+                    <property name="width">1</property>
+                    <property name="height">1</property>
+                  </packing>
+                </child>
+
+                <child>
+                  <object class="GtkButton" id="BtnTheme">
+                    <property name="label">🖥️</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="width-request">48</property>
+                    <property name="height-request">32</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">3</property>
+                    <property name="top-attach">10</property>
+                    <property name="width">1</property>
+                    <property name="height">1</property>
+                  </packing>
+                </child>
+
                 <child><placeholder/></child>
                 <child><placeholder/></child>
                 <child><placeholder/></child>
@@ -379,7 +412,7 @@ audio-volume-medium-symbolic</property>
             <property name="can-focus">True</property>
             <property name="hexpand">True</property>
             <property name="vexpand">True</property>
-            <property name="shadow-type">in</property>
+            <property name="shadow-type">none</property>
             <property name="height-request">140</property>
             <child>
               <object class="GtkTextView" id="LyricsView">

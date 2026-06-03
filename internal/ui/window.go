@@ -3,8 +3,12 @@ package ui
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gg582/gozik/internal/audio"
@@ -29,7 +33,8 @@ var mainWindowCSS = config.AssetPath("ui/gozik.css")
 
 type MainWindow struct {
 	win              *gtk.Window
-	listBox          *gtk.ListBox
+	songView         *gtk.TreeView
+	songStore        *gtk.ListStore
 	timeLabel        *gtk.Label
 	totalTimeLabel   *gtk.Label
 	progressBar      *gtk.Scale
@@ -43,17 +48,28 @@ type MainWindow struct {
 	selectedIdx      int
 	ticker           *time.Ticker
 	tickerDone       chan struct{}
+	tickerMu         sync.Mutex
+	closing          atomic.Bool
 	syncedLyrics     []audio.LRCLine
 	currentLyricLine int
 	gtkSettings      *gtk.Settings
 	desktopSettings  *glib.Settings
 	seeking          bool
+
+	// lyric text tags for synced highlight colours
+	lyricPastTag    *gtk.TextTag
+	lyricCurrentTag *gtk.TextTag
+	lyricNextTag    *gtk.TextTag
+	lyricFutureTag  *gtk.TextTag
+	themeButton     *gtk.Button
+	themeMode       string
 }
 
 func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	mw := &MainWindow{
 		songs:       make([]models.Song, 0),
 		selectedIdx: -1,
+		themeMode:   config.LoadTheme(),
 	}
 
 	gtkSettings, err := gtk.SettingsGetDefault()
@@ -77,12 +93,27 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	obj, err = builder.GetObject("Songlist")
 	utils.ErrorHandler(err, "getting Songlist", logLevel, "warn")
 	if obj != nil {
-		if lb, ok := obj.(*gtk.ListBox); ok {
-			mw.listBox = lb
-			mw.listBox.Connect("row-selected", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
-				if row != nil {
-					mw.selectedIdx = row.GetIndex()
+		if tv, ok := obj.(*gtk.TreeView); ok {
+			mw.songView = tv
+			mw.songView.SetHeadersVisible(false)
+		}
+	}
+	if mw.songView != nil {
+		mw.songStore, err = gtk.ListStoreNew(glib.TYPE_STRING)
+		utils.ErrorHandler(err, "creating SonglistStore", logLevel, "warn")
+		if mw.songStore != nil {
+			mw.songView.SetModel(mw.songStore)
+			if renderer, err := gtk.CellRendererTextNew(); err == nil && renderer != nil {
+				if col, err := gtk.TreeViewColumnNewWithAttribute("Songs", renderer, "text", 0); err == nil && col != nil {
+					mw.songView.AppendColumn(col)
 				}
+			}
+			mw.songView.SetHeadersVisible(false)
+		}
+		if selection, err := mw.songView.GetSelection(); err == nil && selection != nil {
+			selection.SetMode(gtk.SELECTION_SINGLE)
+			selection.Connect("changed", func(selection *gtk.TreeSelection) {
+				mw.selectedIdx = mw.selectedTreeIndex()
 			})
 		}
 	}
@@ -148,6 +179,18 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 		mw.lyricsView, _ = obj.(*gtk.TextView)
 	}
 
+	// Make scrolled windows semi-transparent so wallpaper bleeds through.
+	if obj, err = builder.GetObject("SonglistScroll"); err == nil {
+		if sw, ok := obj.(*gtk.ScrolledWindow); ok {
+			sw.SetOpacity(0.78)
+		}
+	}
+	if obj, err = builder.GetObject("LyricsScroll"); err == nil {
+		if sw, ok := obj.(*gtk.ScrolledWindow); ok {
+			sw.SetOpacity(0.78)
+		}
+	}
+
 	mw.setupControls(builder)
 
 	// Keyboard shortcuts
@@ -179,12 +222,10 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	})
 
 	// Double-click to play
-	if mw.listBox != nil {
-		mw.listBox.Connect("row-activated", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
-			if row != nil {
-				mw.selectedIdx = row.GetIndex()
-				mw.onPlay()
-			}
+	if mw.songView != nil {
+		mw.songView.Connect("row-activated", func(tv *gtk.TreeView, path *gtk.TreePath, column *gtk.TreeViewColumn) {
+			mw.selectedIdx = treePathIndex(path)
+			mw.onPlay()
 		})
 	}
 
@@ -228,10 +269,24 @@ func applyAppTheme() {
 	if provider == nil {
 		return
 	}
-	if err := provider.LoadFromPath(mainWindowCSS); err != nil {
-		utils.ErrorHandler(err, "loading app CSS", logLevel, "warn")
+
+	cssBytes, err := os.ReadFile(mainWindowCSS)
+	if err != nil {
+		utils.ErrorHandler(err, "reading app CSS file", logLevel, "warn")
 		return
 	}
+
+	css := string(cssBytes)
+	bgLightPath := config.AssetPath("bg/light.png")
+	bgDarkPath := config.AssetPath("bg/dark.png")
+	css = strings.ReplaceAll(css, `url("../bg/light.png")`, fmt.Sprintf(`url("file://%s")`, bgLightPath))
+	css = strings.ReplaceAll(css, `url("../bg/dark.png")`, fmt.Sprintf(`url("file://%s")`, bgDarkPath))
+
+	if err := provider.LoadFromData(css); err != nil {
+		utils.ErrorHandler(err, "loading app CSS data", logLevel, "warn")
+		return
+	}
+
 	screen, err := gdk.ScreenGetDefault()
 	utils.ErrorHandler(err, "getting default screen", logLevel, "warn")
 	if screen == nil {
@@ -247,15 +302,21 @@ func (mw *MainWindow) bindSystemTheme(settings *gtk.Settings) {
 
 	if mw.gtkSettings != nil {
 		mw.gtkSettings.Connect("notify::gtk-application-prefer-dark-theme", func() {
-			mw.applySystemTheme()
+			if mw.themeMode == "system" {
+				mw.applySystemTheme()
+			}
 		})
 		mw.gtkSettings.Connect("notify::gtk-theme-name", func() {
-			mw.applySystemTheme()
+			if mw.themeMode == "system" {
+				mw.applySystemTheme()
+			}
 		})
 	}
 	if mw.desktopSettings != nil {
 		mw.desktopSettings.Connect("changed::color-scheme", func() {
-			mw.applySystemTheme()
+			if mw.themeMode == "system" {
+				mw.applySystemTheme()
+			}
 		})
 	}
 }
@@ -272,11 +333,25 @@ func (mw *MainWindow) applySystemTheme() {
 
 	ctx.RemoveClass(themeClassLight)
 	ctx.RemoveClass(themeClassDark)
-	if prefersDarkTheme(mw.gtkSettings, mw.desktopSettings) {
+
+	switch mw.themeMode {
+	case "light":
+		ctx.AddClass(themeClassLight)
+	case "dark":
 		ctx.AddClass(themeClassDark)
-		return
+	default:
+		if prefersDarkTheme(mw.gtkSettings, mw.desktopSettings) {
+			ctx.AddClass(themeClassDark)
+		} else {
+			ctx.AddClass(themeClassLight)
+		}
 	}
-	ctx.AddClass(themeClassLight)
+
+	// Re-apply lyric tag colours so they match the new theme.
+	if mw.lyricsView != nil {
+		mw.ensureLyricTags()
+		mw.applyLyricStyles(mw.currentLyricLine)
+	}
 }
 
 func prefersDarkTheme(settings *gtk.Settings, desktopSettings *glib.Settings) bool {
@@ -323,7 +398,40 @@ func desktopInterfaceSettings() *glib.Settings {
 	return glib.SettingsNew("org.gnome.desktop.interface")
 }
 
+func (mw *MainWindow) onToggleTheme() {
+	switch mw.themeMode {
+	case "system":
+		mw.themeMode = "light"
+	case "light":
+		mw.themeMode = "dark"
+	case "dark":
+		mw.themeMode = "system"
+	}
+	if err := config.SaveTheme(mw.themeMode); err != nil {
+		log.Printf("failed to save theme: %v", err)
+	}
+	mw.applySystemTheme()
+	mw.updateThemeButtonLabel()
+}
+
+func (mw *MainWindow) updateThemeButtonLabel() {
+	if mw.themeButton == nil {
+		return
+	}
+	switch mw.themeMode {
+	case "light":
+		mw.themeButton.SetLabel("☀️")
+	case "dark":
+		mw.themeButton.SetLabel("🌙")
+	default:
+		mw.themeButton.SetLabel("🖥️")
+	}
+}
+
 func (mw *MainWindow) showErrorDialog(msg string) {
+	if mw.closing.Load() || mw.win == nil {
+		return
+	}
 	dlg := gtk.MessageDialogNew(mw.win, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, "%s", msg)
 	dlg.Run()
 	dlg.Destroy()
@@ -334,21 +442,34 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"Play":      mw.onPlay,
 		"Pause":     mw.onPause,
 		"Stop":      mw.onStop,
-		"BtnOpen":   mw.onFileOpen,
-		"BtnOpenCD": mw.onOpenCD,
+		"BtnOpen":    mw.onFileOpen,
+		"BtnOpenCD":  mw.onOpenCD,
+		"BtnRemove":  mw.removeSelectedSong,
 	}
 
 	for id, handler := range buttons {
 		obj, err := builder.GetObject(id)
 		if err != nil {
+			log.Printf("control %s not found: %v", id, err)
 			continue
 		}
 		if btn, ok := obj.(*gtk.Button); ok {
 			btn.Connect("clicked", handler)
+		} else {
+			log.Printf("control %s is %T, not *gtk.Button", id, obj)
 		}
 	}
 
-	obj, err := builder.GetObject("Volume")
+	obj, err := builder.GetObject("BtnTheme")
+	if err == nil {
+		if btn, ok := obj.(*gtk.Button); ok {
+			mw.themeButton = btn
+			btn.Connect("clicked", mw.onToggleTheme)
+			mw.updateThemeButtonLabel()
+		}
+	}
+
+	obj, err = builder.GetObject("Volume")
 	if err == nil {
 		if vol, ok := obj.(*gtk.VolumeButton); ok {
 			vol.SetValue(1.0)
@@ -362,28 +483,45 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 }
 
 func (mw *MainWindow) onQuit(app *gtk.Application) {
+	if mw.closing.Swap(true) {
+		return
+	}
 	mw.stopTicker()
 	if mw.player != nil {
-		mw.player.Close()
+		player := mw.player
+		mw.player = nil
+		go player.Close()
 	}
 	app.Quit()
 }
 
 func (mw *MainWindow) onOpenCD() {
+	log.Println("Open CD requested")
+	if mw.closing.Load() {
+		log.Println("Open CD ignored: window is closing")
+		return
+	}
 	if !cdrom.IsSupported() {
+		log.Println("Open CD unsupported on this OS")
 		mw.showErrorDialog("Audio CD playback is not supported on this OS yet.")
 		return
 	}
 	device := cdrom.DefaultDevice()
 	if device == "" {
+		log.Println("Open CD failed: no default device")
 		mw.showErrorDialog("No default CD drive is configured for this OS.")
 		return
 	}
+	log.Printf("Opening CD device: %s", device)
 
 	go func() {
 		dev, err := cdrom.Open(device)
 		if err != nil {
+			log.Printf("Open CD failed: %v", err)
 			glib.IdleAdd(func() bool {
+				if mw.closing.Load() {
+					return false
+				}
 				mw.showErrorDialog("No CD drive found.")
 				return false
 			})
@@ -392,36 +530,303 @@ func (mw *MainWindow) onOpenCD() {
 
 		tracks, err := dev.ReadTOC()
 		if err != nil {
+			log.Printf("Read CD TOC failed: %v", err)
 			_ = dev.Eject()
 			dev.Close()
 			glib.IdleAdd(func() bool {
+				if mw.closing.Load() {
+					return false
+				}
 				mw.showErrorDialog("Please insert your CD")
 				return false
 			})
 			return
 		}
 		dev.Close()
+		log.Printf("Read CD TOC: %d tracks", len(tracks))
 
+		mw.queueCDTracks(device, tracks)
+	}()
+}
+
+func (mw *MainWindow) queueCDTracks(device string, tracks []cdrom.Track) {
+	songs := make([]models.Song, 0, len(tracks))
+	for _, t := range tracks {
+		if !t.IsAudio {
+			continue
+		}
+		songs = append(songs, models.Song{
+			Name:     fmt.Sprintf("CD Track %02d", t.Number),
+			Device:   device,
+			TrackNum: t.Number,
+			IsCD:     true,
+		})
+	}
+	if len(songs) == 0 {
 		glib.IdleAdd(func() bool {
-			for _, t := range tracks {
-				if !t.IsAudio {
-					continue
-				}
-				song := models.Song{
-					Name:     fmt.Sprintf("CD Track %02d", t.Number),
-					Device:   device,
-					TrackNum: t.Number,
-					IsCD:     true,
-				}
-				mw.songs = append(mw.songs, song)
-				mw.appendSongToList(song)
+			if !mw.closing.Load() {
+				mw.showErrorDialog("No audio tracks found on this CD.")
 			}
+			return false
+		})
+		return
+	}
+	log.Printf("Queueing %d audio CD tracks", len(songs))
+
+	idx := 0
+	var addNext func() bool
+	addNext = func() bool {
+		if mw.closing.Load() || mw.songStore == nil {
+			return false
+		}
+		if idx >= len(songs) {
+			return false
+		}
+		song := songs[idx]
+		idx++
+		mw.songs = append(mw.songs, song)
+		mw.appendSongToList(song)
+		if idx < len(songs) {
+			glib.IdleAdd(addNext)
+		}
+		return false
+	}
+	glib.IdleAdd(addNext)
+
+	toc := cdrom.MusicBrainzTOC(tracks)
+	if toc == "" {
+		return
+	}
+	go func() {
+		release, err := audio.SearchMusicBrainzDisc(toc)
+		if err != nil {
+			log.Printf("MusicBrainz disc lookup failed: %v", err)
+			return
+		}
+		glib.IdleAdd(func() bool {
+			mw.applyCDMetadata(device, release)
 			return false
 		})
 	}()
 }
 
+func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscRelease) {
+	if mw.closing.Load() {
+		return
+	}
+
+	// Build a map from track position to MB track info for quick lookup.
+	mbTrackMap := make(map[int]audio.MBDiscTrack)
+	for _, t := range release.Tracks {
+		mbTrackMap[t.Position] = t
+	}
+
+	// Update songs and list store.
+	for i := range mw.songs {
+		song := &mw.songs[i]
+		if !song.IsCD || song.Device != device {
+			continue
+		}
+
+		if track, ok := mbTrackMap[song.TrackNum]; ok {
+			if track.Title != "" {
+				song.Title = track.Title
+				song.Name = track.Title
+			}
+			if track.Artist != "" {
+				song.Artist = track.Artist
+			}
+			if track.Length > 0 {
+				song.Duration = track.Length / 1000
+			}
+		}
+
+		if release.Title != "" {
+			song.Album = release.Title
+		}
+		if release.Artist != "" && song.Artist == "" {
+			song.Artist = release.Artist
+		}
+		if release.Year != "" {
+			song.AlbumYear = release.Year
+		}
+		if release.CoverArtURL != "" {
+			song.CoverArtURL = release.CoverArtURL
+		}
+
+		// Update list store display text.
+		path, err := gtk.TreePathNewFromString(strconv.Itoa(i))
+		if err == nil {
+			iter, err := mw.songStore.GetIter(path)
+			if err == nil {
+				display := song.Name
+				if song.Artist != "" {
+					display = fmt.Sprintf("%s - %s", song.Name, song.Artist)
+				}
+				mw.songStore.SetValue(iter, 0, display)
+			}
+		}
+	}
+
+	// If the currently selected song is from this CD, refresh the metadata labels.
+	if mw.selectedIdx >= 0 && mw.selectedIdx < len(mw.songs) {
+		cur := &mw.songs[mw.selectedIdx]
+		if cur.IsCD && cur.Device == device {
+			if mw.albumTitle != nil {
+				text := cur.Album
+				if text == "" {
+					text = " "
+				}
+				mw.albumTitle.SetText(text)
+			}
+			if mw.albumArtist != nil {
+				text := cur.Artist
+				if text == "" {
+					text = " "
+				}
+				mw.albumArtist.SetText(text)
+			}
+			if mw.albumYear != nil {
+				text := cur.AlbumYear
+				if text == "" {
+					text = " "
+				}
+				mw.albumYear.SetText(text)
+			}
+			if len(cur.CoverData) == 0 && cur.CoverArtURL != "" {
+				go func(s *models.Song) {
+					imgData, err := audio.DownloadImage(s.CoverArtURL)
+					if err == nil {
+						glib.IdleAdd(func() bool {
+							s.CoverData = imgData
+							mw.setAlbumCover(imgData)
+							return false
+						})
+					}
+				}(cur)
+			}
+		}
+	}
+}
+
+func (mw *MainWindow) ensureLyricTags() {
+	if mw.lyricsView == nil {
+		return
+	}
+	buf, err := mw.lyricsView.GetBuffer()
+	if err != nil || buf == nil {
+		return
+	}
+	table, err := buf.GetTagTable()
+	if err != nil || table == nil {
+		return
+	}
+
+	isDark := false
+	if ctx, err := mw.win.GetStyleContext(); err == nil && ctx != nil {
+		isDark = ctx.HasClass("theme-dark")
+	}
+
+	var currentColor, nextColor, mutedColor string
+	if isDark {
+		currentColor = "#E88A73" // lighter terracotta
+		nextColor = "#F0F0EC"    // soft off-white
+		mutedColor = "#6B6B66"   // dark muted grey
+	} else {
+		currentColor = "#D4654A" // terracotta accent
+		nextColor = "#2C2C2A"    // charcoal
+		mutedColor = "#A3A39E"   // light muted grey
+	}
+
+	createOrUpdate := func(tag **gtk.TextTag, name, color string, weight pango.Weight) {
+		if existing, _ := table.Lookup(name); existing != nil {
+			table.Remove(existing)
+		}
+		t, _ := gtk.TextTagNew(name)
+		if t == nil {
+			return
+		}
+		_ = t.SetProperty("foreground", color)
+		if weight > 0 {
+			_ = t.SetProperty("weight", weight)
+		}
+		table.Add(t)
+		*tag = t
+	}
+
+	createOrUpdate(&mw.lyricPastTag, "lyric-past", mutedColor, pango.WEIGHT_NORMAL)
+	createOrUpdate(&mw.lyricCurrentTag, "lyric-current", currentColor, pango.WEIGHT_BOLD)
+	createOrUpdate(&mw.lyricNextTag, "lyric-next", nextColor, pango.WEIGHT_SEMIBOLD)
+	createOrUpdate(&mw.lyricFutureTag, "lyric-future", mutedColor, pango.WEIGHT_NORMAL)
+}
+
+func (mw *MainWindow) applyLyricStyles(currentLine int) {
+	if mw.lyricsView == nil {
+		return
+	}
+	buf, err := mw.lyricsView.GetBuffer()
+	if err != nil || buf == nil {
+		return
+	}
+
+	mw.ensureLyricTags()
+
+	nLines := buf.GetLineCount()
+	if nLines <= 0 {
+		return
+	}
+
+	startAll := buf.GetStartIter()
+	endAll := buf.GetEndIter()
+	if mw.lyricPastTag != nil {
+		buf.RemoveTag(mw.lyricPastTag, startAll, endAll)
+	}
+	if mw.lyricCurrentTag != nil {
+		buf.RemoveTag(mw.lyricCurrentTag, startAll, endAll)
+	}
+	if mw.lyricNextTag != nil {
+		buf.RemoveTag(mw.lyricNextTag, startAll, endAll)
+	}
+	if mw.lyricFutureTag != nil {
+		buf.RemoveTag(mw.lyricFutureTag, startAll, endAll)
+	}
+
+	for i := 0; i < nLines; i++ {
+		start := buf.GetIterAtLine(i)
+		var end *gtk.TextIter
+		if i == nLines-1 {
+			end = buf.GetEndIter()
+		} else {
+			end = buf.GetIterAtLine(i + 1)
+		}
+
+		var tag *gtk.TextTag
+		switch {
+		case i < currentLine:
+			tag = mw.lyricPastTag
+		case i == currentLine:
+			tag = mw.lyricCurrentTag
+		case i == currentLine+1:
+			tag = mw.lyricNextTag
+		default:
+			tag = mw.lyricFutureTag
+		}
+
+		if tag != nil {
+			buf.ApplyTag(tag, start, end)
+		}
+	}
+
+	if currentLine >= 0 && currentLine < nLines {
+		iter := buf.GetIterAtLine(currentLine)
+		mw.lyricsView.ScrollToIter(iter, 0.0, true, 0.0, 0.5)
+	}
+}
+
 func (mw *MainWindow) onFileOpen() {
+	if mw.closing.Load() {
+		return
+	}
 	dialog, err := gtk.FileChooserDialogNewWith1Button(
 		"Open Files...",
 		mw.win,
@@ -474,84 +879,28 @@ func (mw *MainWindow) onFileOpen() {
 }
 
 func (mw *MainWindow) appendSongToList(song models.Song) {
-	if mw.listBox == nil {
+	if mw.closing.Load() || mw.songStore == nil {
 		return
 	}
-	row, err := gtk.ListBoxRowNew()
-	if err != nil {
-		return
-	}
-
-	box, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
-	if err != nil {
-		return
-	}
-
-	infoBox, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
-	if err != nil {
-		return
-	}
-	infoBox.SetHExpand(true)
-
-	titleLabel, err := gtk.LabelNew("")
-	if err != nil {
-		return
-	}
-	titleLabel.SetHAlign(gtk.ALIGN_START)
-	titleLabel.SetEllipsize(pango.ELLIPSIZE_END)
-
 	display := song.Name
 	if song.Artist != "" {
-		display = fmt.Sprintf("%s  <span size=\"small\" alpha=\"60%%\">%s</span>", song.Name, song.Artist)
+		display = fmt.Sprintf("%s - %s", song.Name, song.Artist)
 	}
-	titleLabel.SetMarkup(display)
-
-	infoBox.PackStart(titleLabel, false, false, 0)
-
-	btn, err := gtk.ButtonNewWithLabel("×")
-	if err != nil {
-		return
+	iter := mw.songStore.Append()
+	if err := mw.songStore.SetValue(iter, 0, display); err != nil {
+		log.Printf("failed to append song row: %v", err)
 	}
-	btn.SetRelief(gtk.RELIEF_NONE)
-	btn.SetFocusOnClick(false)
-	btn.SetSizeRequest(24, 24)
-
-	btn.Connect("clicked", func() {
-		idx := row.GetIndex()
-		mw.listBox.Remove(row)
-		if idx >= 0 && idx < len(mw.songs) {
-			mw.songs = append(mw.songs[:idx], mw.songs[idx+1:]...)
-		}
-		if mw.selectedIdx == idx {
-			mw.selectedIdx = -1
-		} else if mw.selectedIdx > idx {
-			mw.selectedIdx--
-		}
-		mw.refreshPlayingHighlight()
-	})
-
-	box.PackStart(infoBox, true, true, 0)
-	box.PackEnd(btn, false, false, 0)
-	row.Add(box)
-	row.ShowAll()
-
-	mw.listBox.Add(row)
 }
 
 func (mw *MainWindow) onPlay() {
-	if mw.listBox == nil {
+	if mw.closing.Load() || mw.songView == nil || mw.player == nil {
 		return
 	}
-	row := mw.listBox.GetSelectedRow()
-	if row == nil {
-		if len(mw.songs) > 0 {
-			mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(0))
-			row = mw.listBox.GetRowAtIndex(0)
-		} else {
-			return
-		}
+	idx := mw.selectedTreeIndex()
+	if idx < 0 && len(mw.songs) > 0 {
+		idx = 0
+		mw.selectTreeIndex(0)
 	}
-	idx := row.GetIndex()
 	if idx < 0 || idx >= len(mw.songs) {
 		return
 	}
@@ -593,14 +942,21 @@ func (mw *MainWindow) onPlay() {
 }
 
 func (mw *MainWindow) onPause() {
+	if mw.closing.Load() {
+		return
+	}
 	if mw.player != nil {
 		mw.player.Pause()
 	}
 }
 
 func (mw *MainWindow) onStop() {
+	if mw.closing.Load() {
+		return
+	}
 	if mw.player != nil {
-		mw.player.Stop()
+		player := mw.player
+		go player.Stop()
 	}
 	mw.stopTicker()
 	if mw.timeLabel != nil {
@@ -617,14 +973,18 @@ func (mw *MainWindow) onStop() {
 
 func (mw *MainWindow) startTicker() {
 	mw.stopTicker()
+	mw.tickerMu.Lock()
 	mw.ticker = time.NewTicker(time.Second)
 	mw.tickerDone = make(chan struct{})
+	ticker := mw.ticker
+	done := mw.tickerDone
+	mw.tickerMu.Unlock()
 	go func() {
 		for {
 			select {
-			case <-mw.ticker.C:
+			case <-ticker.C:
 				glib.IdleAdd(func() bool {
-					if mw.player == nil {
+					if mw.closing.Load() || mw.player == nil {
 						return false
 					}
 					pos := mw.player.Position()
@@ -653,21 +1013,15 @@ func (mw *MainWindow) startTicker() {
 								break
 							}
 						}
-						if targetLine != mw.currentLyricLine && targetLine >= 0 {
+						if targetLine != mw.currentLyricLine {
 							mw.currentLyricLine = targetLine
-							b, _ := mw.lyricsView.GetBuffer()
-							if b != nil {
-								start := b.GetIterAtLine(targetLine)
-								end := b.GetIterAtLine(targetLine + 1)
-								b.SelectRange(start, end)
-								mw.lyricsView.ScrollToIter(start, 0.0, true, 0.0, 0.5)
-							}
+							mw.applyLyricStyles(targetLine)
 						}
 					}
 
 					return false
 				})
-			case <-mw.tickerDone:
+			case <-done:
 				return
 			}
 		}
@@ -675,6 +1029,8 @@ func (mw *MainWindow) startTicker() {
 }
 
 func (mw *MainWindow) stopTicker() {
+	mw.tickerMu.Lock()
+	defer mw.tickerMu.Unlock()
 	if mw.ticker != nil {
 		mw.ticker.Stop()
 		if mw.tickerDone != nil {
@@ -693,7 +1049,16 @@ func formatDuration(d time.Duration) string {
 	d = d.Round(time.Second)
 	m := int(d.Minutes())
 	s := int(d.Seconds()) % 60
-	return fmt.Sprintf("%02d:%02d", m, s)
+	if m > 99 {
+		return fmt.Sprintf("%02d:%02d", m, s)
+	}
+	return string([]byte{
+		byte('0' + (m/10)%10),
+		byte('0' + m%10),
+		':',
+		byte('0' + s/10),
+		byte('0' + s%10),
+	})
 }
 
 func newSongFromFile(path string) models.Song {
@@ -736,8 +1101,8 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 				if title == "" {
 					title = song.Name
 				}
-				durationSec := 0
-				if mw.player != nil {
+				durationSec := song.Duration
+				if durationSec == 0 && mw.player != nil {
 					durationSec = int(mw.player.Length().Seconds())
 				}
 				if online, err := audio.SearchLyrics(title, song.Artist, song.Album, durationSec); err == nil && online != "" {
@@ -914,36 +1279,66 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 	mw.albumCover.SetFromPixbuf(dest)
 }
 
-func (mw *MainWindow) refreshPlayingHighlight() {
-	if mw.listBox == nil {
+func (mw *MainWindow) selectedTreeIndex() int {
+	idx, _ := mw.selectedTreeIter()
+	return idx
+}
+
+func (mw *MainWindow) selectedTreeIter() (int, *gtk.TreeIter) {
+	if mw.songView == nil {
+		return -1, nil
+	}
+	selection, err := mw.songView.GetSelection()
+	if err != nil || selection == nil {
+		return -1, nil
+	}
+	model, iter, ok := selection.GetSelected()
+	if !ok || model == nil || iter == nil {
+		return -1, nil
+	}
+	path, err := model.ToTreeModel().GetPath(iter)
+	if err != nil || path == nil {
+		return -1, nil
+	}
+	return treePathIndex(path), iter
+}
+
+func (mw *MainWindow) selectTreeIndex(idx int) {
+	if mw.songView == nil || idx < 0 {
 		return
 	}
-	for i := 0; i < len(mw.songs); i++ {
-		if r := mw.listBox.GetRowAtIndex(i); r != nil {
-			if ctx, err := r.GetStyleContext(); err == nil {
-				ctx.RemoveClass("playing")
-			}
-		}
+	path, err := gtk.TreePathNewFromString(fmt.Sprintf("%d", idx))
+	if err != nil || path == nil {
+		return
 	}
-	if mw.player != nil && mw.player.IsPlaying() && mw.selectedIdx >= 0 && mw.selectedIdx < len(mw.songs) {
-		if r := mw.listBox.GetRowAtIndex(mw.selectedIdx); r != nil {
-			if ctx, err := r.GetStyleContext(); err == nil {
-				ctx.AddClass("playing")
-			}
-		}
+	if selection, err := mw.songView.GetSelection(); err == nil && selection != nil {
+		selection.SelectPath(path)
 	}
 }
 
+func treePathIndex(path *gtk.TreePath) int {
+	if path == nil {
+		return -1
+	}
+	indices := path.GetIndices()
+	if len(indices) == 0 {
+		return -1
+	}
+	return indices[0]
+}
+
+func (mw *MainWindow) refreshPlayingHighlight() {
+}
+
 func (mw *MainWindow) removeSelectedSong() {
-	if mw.listBox == nil {
+	if mw.songStore == nil {
 		return
 	}
-	row := mw.listBox.GetSelectedRow()
-	if row == nil {
+	idx, iter := mw.selectedTreeIter()
+	if idx < 0 || iter == nil {
 		return
 	}
-	idx := row.GetIndex()
-	mw.listBox.Remove(row)
+	mw.songStore.Remove(iter)
 	if idx >= 0 && idx < len(mw.songs) {
 		mw.songs = append(mw.songs[:idx], mw.songs[idx+1:]...)
 	}
@@ -957,7 +1352,7 @@ func (mw *MainWindow) removeSelectedSong() {
 
 func isSupported(ext string) bool {
 	switch ext {
-	case "mp3", "mp2", "mp1", "mpa", "flac", "ogg", "oga", "opus", "spx", "m4a", "mp4", "aac", "alac", "wav", "wma", "aiff", "aif", "aifc", "ape", "wv", "tta", "tak", "mpc", "ofr", "ofs", "ac3", "eac3", "dts", "amr", "3gp", "3g2", "ra", "rm", "mka", "webm", "caf", "au", "snd", "voc", "dsd", "dsf", "dff", "pcm", "raw", "m3u", "m3u8":
+	case "mp3", "mp2", "mp1", "mpa", "flac", "ogg", "oga", "opus", "spx", "m4a", "mp4", "aac", "alac", "wav", "wma", "aiff", "aif", "aifc", "cda", "ape", "wv", "tta", "tak", "mpc", "ofr", "ofs", "ac3", "eac3", "dts", "amr", "3gp", "3g2", "ra", "rm", "mka", "webm", "caf", "au", "snd", "voc", "dsd", "dsf", "dff", "pcm", "raw", "m3u", "m3u8":
 		return true
 	}
 	return false

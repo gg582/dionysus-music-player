@@ -66,16 +66,17 @@ var (
 	mbQueue     chan mbRequest
 	mbCache     map[string]*mbResult
 	mbCacheMu   sync.RWMutex
-	mbPending   map[string]bool
-	mbPendingMu sync.Mutex
+	mbWaiters   map[string][]func(*MBRecording, error)
+	mbWaitersMu sync.Mutex
 	mbOnce      sync.Once
+	mbReqMu     sync.Mutex
 )
 
 func ensureMBWorker() {
 	mbOnce.Do(func() {
 		mbQueue = make(chan mbRequest, 100)
 		mbCache = make(map[string]*mbResult)
-		mbPending = make(map[string]bool)
+		mbWaiters = make(map[string][]func(*MBRecording, error))
 		go mbWorker()
 	})
 }
@@ -92,10 +93,12 @@ func mbWorker() {
 		}
 
 		// 2) Rate-limit: 1 req / 1.1 sec
+		mbReqMu.Lock()
 		time.Sleep(1100 * time.Millisecond)
 
 		// 3) Execute request
 		rec, err := searchMusicBrainzDirect(req.query)
+		mbReqMu.Unlock()
 
 		// 4) Store in cache
 		mbCacheMu.Lock()
@@ -108,7 +111,9 @@ func mbWorker() {
 }
 
 // QueueMusicBrainzSearch queues a MusicBrainz search request.
-// Results are cached and reused. Duplicate queued requests are deduplicated.
+// Results are cached and reused. Multiple callers with the same query share
+// a single network request, but each receives its own callback so results
+// are stored per-song.
 func QueueMusicBrainzSearch(query string, callback func(*MBRecording, error)) {
 	ensureMBWorker()
 	query = sanitizeQuery(query)
@@ -122,22 +127,28 @@ func QueueMusicBrainzSearch(query string, callback func(*MBRecording, error)) {
 	}
 	mbCacheMu.RUnlock()
 
-	// Deduplication: already in queue?
-	mbPendingMu.Lock()
-	if mbPending[query] {
-		mbPendingMu.Unlock()
+	mbWaitersMu.Lock()
+	if _, exists := mbWaiters[query]; exists {
+		// Already in-flight: just add this song's callback.
+		mbWaiters[query] = append(mbWaiters[query], callback)
+		mbWaitersMu.Unlock()
 		return
 	}
-	mbPending[query] = true
-	mbPendingMu.Unlock()
+	// First request for this query: start waiter list.
+	mbWaiters[query] = []func(*MBRecording, error){callback}
+	mbWaitersMu.Unlock()
 
 	req := mbRequest{
 		query: query,
 		callback: func(rec *MBRecording, err error) {
-			mbPendingMu.Lock()
-			delete(mbPending, query)
-			mbPendingMu.Unlock()
-			callback(rec, err)
+			mbWaitersMu.Lock()
+			waiters := mbWaiters[query]
+			delete(mbWaiters, query)
+			mbWaitersMu.Unlock()
+
+			for _, cb := range waiters {
+				cb(rec, err)
+			}
 		},
 	}
 
