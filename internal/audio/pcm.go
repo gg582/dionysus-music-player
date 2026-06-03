@@ -16,6 +16,10 @@ type pcmStreamer struct {
 }
 
 func decodePCM(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
+	return decodePCMWithFormat(r, 44100)
+}
+
+func decodePCMWithFormat(r io.Reader, sampleRate beep.SampleRate) (beep.StreamSeekCloser, beep.Format, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, beep.Format{}, err
@@ -31,7 +35,7 @@ func decodePCM(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
 	}
 
 	format := beep.Format{
-		SampleRate:  44100,
+		SampleRate:  sampleRate,
 		NumChannels: 2,
 		Precision:   2,
 	}

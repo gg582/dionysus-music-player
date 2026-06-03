@@ -623,9 +623,9 @@ func (mw *MainWindow) startTicker() {
 					length := mw.player.Length()
 					if mw.timeLabel != nil {
 						mw.timeLabel.SetText(formatDuration(pos))
-							if mw.totalTimeLabel != nil {
-								mw.totalTimeLabel.SetText(formatDuration(length))
-							}
+						if mw.totalTimeLabel != nil {
+							mw.totalTimeLabel.SetText(formatDuration(length))
+						}
 					}
 					if mw.progressBar != nil && length > 0 && !mw.seeking {
 						pct := float64(pos) / float64(length) * 100.0
@@ -949,7 +949,7 @@ func (mw *MainWindow) removeSelectedSong() {
 
 func isSupported(ext string) bool {
 	switch ext {
-	case "mp3", "flac", "ogg", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "m3u", "m3u8":
+	case "mp3", "mp2", "mp1", "mpa", "flac", "ogg", "oga", "opus", "spx", "m4a", "mp4", "aac", "alac", "wav", "wma", "aiff", "aif", "aifc", "ape", "wv", "tta", "tak", "mpc", "ofr", "ofs", "ac3", "eac3", "dts", "amr", "3gp", "3g2", "ra", "rm", "mka", "webm", "caf", "au", "snd", "voc", "dsd", "dsf", "dff", "pcm", "raw", "m3u", "m3u8":
 		return true
 	}
 	return false

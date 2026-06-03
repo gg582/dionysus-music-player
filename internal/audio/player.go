@@ -108,12 +108,15 @@ func (p *Player) Load(filename string) error {
 		streamer, format, err = decodePCM(f)
 	default:
 		f.Close()
-		return fmt.Errorf("unsupported format: %s", ext)
+		streamer, format, err = decodeFFmpeg(filename)
 	}
 
 	if err != nil {
 		f.Close()
-		return err
+		streamer, format, err = decodeFFmpeg(filename)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := p.initSpeaker(); err != nil {

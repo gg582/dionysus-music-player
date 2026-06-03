@@ -21,6 +21,13 @@ FORMATS = {
     "flac": ["-c:a", "flac"],
     "wav": ["-c:a", "pcm_s16le"],
     "ogg": ["-c:a", "libvorbis", "-q:a", "4"],
+    "opus": ["-c:a", "libopus", "-b:a", "128k"],
+    "m4a": ["-c:a", "aac", "-b:a", "192k"],
+    "aac": ["-c:a", "aac", "-b:a", "192k"],
+    "wma": ["-c:a", "wmav2", "-b:a", "192k"],
+    "ape": ["-c:a", "ape"],
+    "wv": ["-c:a", "wavpack"],
+    "tta": ["-c:a", "tta"],
     "aiff": ["-c:a", "pcm_s16be"],
     "pcm": ["-f", "s16le", "-ac", "2", "-ar", "44100"],
 }

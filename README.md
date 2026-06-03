@@ -9,8 +9,11 @@ A simple desktop music player for Linux. It plays local audio files and audio CD
 - MP3
 - FLAC
 - WAV
-- Ogg Vorbis
+- Ogg Vorbis / Opus
 - AIFF / AIF
+- WMA
+- M4A / AAC / ALAC
+- APE, WavPack, TTA, Musepack, AC3, DTS, AMR, RealAudio, CAF, AU, VOC, DSF/DFF, and other FFmpeg-readable audio files
 - Raw PCM (16-bit stereo, little-endian, 44100 Hz)
 
 **Playlists**
@@ -23,7 +26,7 @@ A simple desktop music player for Linux. It plays local audio files and audio CD
 
 ## Build
 
-Requires Go 1.21+ and GTK3 development headers.
+Requires Go 1.21+, GTK3 development headers, and `ffmpeg` for broad format fallback playback.
 
 ```bash
 make

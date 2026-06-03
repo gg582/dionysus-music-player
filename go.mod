@@ -20,6 +20,7 @@ require (
 	github.com/jfreymuth/vorbis v1.0.2 // indirect
 	github.com/mewkiz/flac v1.0.8 // indirect
 	github.com/mewkiz/pkg v0.0.0-20230226050401-4010bf0fec14 // indirect
+	github.com/moonfdd/ffmpeg-go v0.0.0-20240925083614-afd889cdf7fa // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/text v0.7.0 // indirect
 )
