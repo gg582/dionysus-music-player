@@ -37,7 +37,7 @@ icons:
 	done
 
 install: icons
-	@test -f $(BINARY) || { echo "$(BINARY) not found. Run 'make build' first."; exit 1; }
+	@test -f $(BINARY) || $(MAKE) build
 	install -Dm755 $(BINARY) $(BINDIR)/$(BINARY)
 	install -Dm644 assets/ui/gozik-main-window.glade $(DATADIR)/gozik/ui/gozik-main-window.glade
 	install -Dm644 assets/ui/gozik.css $(DATADIR)/gozik/ui/gozik.css
@@ -46,8 +46,9 @@ install: icons
 	@for size in $(ICON_SIZES); do \
 		install -Dm644 assets/icons/hicolor/$${size}x$${size}/apps/gozik.png $(ICONDIR)/$${size}x$${size}/apps/gozik.png; \
 	done
-	gtk-update-icon-cache -q $(ICONDIR) || true
-	update-desktop-database $(APPLICATIONSDIR) || true
+	touch $(ICONDIR) || true
+	gtk-update-icon-cache -f -t $(ICONDIR) || true
+	update-desktop-database -q $(APPLICATIONSDIR) || true
 
 uninstall:
 	rm -f $(BINDIR)/$(BINARY)
@@ -56,5 +57,6 @@ uninstall:
 	@for size in $(ICON_SIZES); do \
 		rm -f $(ICONDIR)/$${size}x$${size}/apps/gozik.png; \
 	done
-	gtk-update-icon-cache -q $(ICONDIR) || true
-	update-desktop-database $(APPLICATIONSDIR) || true
+	touch $(ICONDIR) || true
+	gtk-update-icon-cache -f -t $(ICONDIR) || true
+	update-desktop-database -q $(APPLICATIONSDIR) || true
