@@ -3,6 +3,7 @@
 package cdrom
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"unsafe"
@@ -29,21 +30,19 @@ type cdrom_tocentry struct {
 	Track    uint8
 	AdrCtrl  uint8
 	Format   uint8
-	Addr     cdrom_addr
+	_        [1]byte
+	Addr     [4]byte
 	DataMode uint8
-}
-
-type cdrom_addr struct {
-	Lba int32
-	Msf [3]uint8
-	Pad [4]uint8
+	_        [3]byte
 }
 
 type cdrom_read_audio struct {
-	Addr       cdrom_addr
-	AddrFormat int32
+	Addr       [4]byte
+	AddrFormat uint8
+	_          [3]byte
 	NFrames    int32
 	Buf        unsafe.Pointer
+	_          [4]byte
 }
 
 // Device wraps an open CD-ROM device.
@@ -75,8 +74,8 @@ func (d *Device) Close() error {
 
 // ReadTOC reads the table of contents and returns audio tracks.
 func (d *Device) ReadTOC() ([]Track, error) {
-	var hdr cdrom_tochdr
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCHDR, uintptr(unsafe.Pointer(&hdr)))
+	hdr := new(cdrom_tochdr)
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCHDR, uintptr(unsafe.Pointer(hdr)))
 	if errno != 0 {
 		return nil, fmt.Errorf("CDROMREADTOCHDR: %v", errno)
 	}
@@ -84,16 +83,16 @@ func (d *Device) ReadTOC() ([]Track, error) {
 	tracks := make([]Track, 0, hdr.Trk1-hdr.Trk0+1)
 
 	for t := hdr.Trk0; t <= hdr.Trk1; t++ {
-		entry := cdrom_tocentry{
-			Track:  t,
-			Format: CDROM_LBA,
-		}
-		_, _, errno = unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCENTRY, uintptr(unsafe.Pointer(&entry)))
+		entry := new(cdrom_tocentry)
+		entry.Track = t
+		entry.Format = CDROM_LBA
+
+		_, _, errno = unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCENTRY, uintptr(unsafe.Pointer(entry)))
 		if errno != 0 {
 			return nil, fmt.Errorf("CDROMREADTOCENTRY track %d: %v", t, errno)
 		}
 
-		startLBA := int(entry.Addr.Lba)
+		startLBA := int(int32(binary.LittleEndian.Uint32(entry.Addr[:])))
 		isAudio := ((entry.AdrCtrl >> 4) & 0x04) == 0
 
 		if t > hdr.Trk0 {
@@ -110,17 +109,17 @@ func (d *Device) ReadTOC() ([]Track, error) {
 	}
 
 	// Lead-out to determine end of last track.
-	entry := cdrom_tocentry{
-		Track:  0xAA,
-		Format: CDROM_LBA,
-	}
-	_, _, errno = unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCENTRY, uintptr(unsafe.Pointer(&entry)))
+	entry := new(cdrom_tocentry)
+	entry.Track = 0xAA
+	entry.Format = CDROM_LBA
+
+	_, _, errno = unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADTOCENTRY, uintptr(unsafe.Pointer(entry)))
 	if errno != 0 {
 		return nil, fmt.Errorf("CDROMREADTOCENTRY lead-out: %v", errno)
 	}
 	if len(tracks) > 0 {
 		last := &tracks[len(tracks)-1]
-		last.EndLBA = int(entry.Addr.Lba)
+		last.EndLBA = int(int32(binary.LittleEndian.Uint32(entry.Addr[:])))
 		last.Length = last.EndLBA - last.StartLBA
 	}
 
@@ -133,14 +132,13 @@ func (d *Device) ReadAudioFrames(lba int, nframes int) ([]byte, error) {
 		return nil, nil
 	}
 	buf := make([]byte, nframes*CD_FRAME_SIZE)
-	ra := cdrom_read_audio{
-		AddrFormat: CDROM_LBA,
-		NFrames:    int32(nframes),
-		Buf:        unsafe.Pointer(&buf[0]),
-	}
-	ra.Addr.Lba = int32(lba)
+	ra := new(cdrom_read_audio)
+	ra.AddrFormat = CDROM_LBA
+	ra.NFrames = int32(nframes)
+	ra.Buf = unsafe.Pointer(&buf[0])
+	binary.LittleEndian.PutUint32(ra.Addr[:], uint32(lba))
 
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADAUDIO, uintptr(unsafe.Pointer(&ra)))
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, d.f.Fd(), CDROMREADAUDIO, uintptr(unsafe.Pointer(ra)))
 	if errno != 0 {
 		return nil, fmt.Errorf("CDROMREADAUDIO lba=%d nframes=%d: %v", lba, nframes, errno)
 	}
