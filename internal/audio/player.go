@@ -81,6 +81,46 @@ func (p *Player) initSpeaker() error {
 	return speakerInitErr
 }
 
+// ProbeDuration decodes a file just far enough to read its total length, then
+// closes it. Used to compute the queue's total play time without playback.
+func ProbeDuration(filename string) (time.Duration, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return 0, err
+	}
+	ext := strings.ToLower(filename[strings.LastIndex(filename, ".")+1:])
+	var streamer beep.StreamSeekCloser
+	var format beep.Format
+	switch ext {
+	case "mp3":
+		streamer, format, err = mp3.Decode(f)
+	case "flac":
+		streamer, format, err = flac.Decode(f)
+	case "wav":
+		streamer, format, err = wav.Decode(f)
+	case "ogg":
+		streamer, format, err = vorbis.Decode(f)
+	case "aiff", "aif":
+		streamer, format, err = decodeAIFF(f)
+	case "pcm", "raw":
+		streamer, format, err = decodePCM(f)
+	default:
+		f.Close()
+		return 0, fmt.Errorf("unsupported format: %s", ext)
+	}
+	if err != nil {
+		f.Close()
+		return 0, err
+	}
+	defer streamer.Close()
+
+	n := streamer.Len()
+	if n <= 0 || format.SampleRate == 0 {
+		return 0, nil
+	}
+	return time.Second * time.Duration(n) / time.Duration(format.SampleRate), nil
+}
+
 func (p *Player) Load(filename string) error {
 	p.reset()
 

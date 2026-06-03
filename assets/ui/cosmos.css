@@ -1,0 +1,92 @@
+/* ============================================================
+   GOZIK — Shared cosmic chrome / atmosphere / components
+   Linked by main.html AND open.html, AFTER tokens.css.
+   This is the single source of truth for everything the two
+   screens have in common — so the design language is physically
+   identical and cannot drift. Screen-specific layout stays in
+   each file's own <style>.
+   Dark-only · no purple · gradients only as faint background.
+   ============================================================ */
+
+/* ---------- reset + page ---------- */
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; }
+body{
+  display:flex; align-items:center; justify-content:center;
+  background:#020308;
+  font-family:var(--font); color:var(--text-1);
+  -webkit-font-smoothing:antialiased; padding:24px;
+}
+
+/* ---------- window frame (shared) ---------- */
+.frame{
+  position:relative; overflow:hidden; isolation:isolate;
+  display:flex; flex-direction:column;
+  border-radius:18px; border:1px solid var(--hairline-strong);
+  background:var(--abyss-1);
+  box-shadow:0 40px 120px rgba(0,0,0,0.7);
+}
+
+/* ---------- deep-space atmosphere (one shared recipe) ---------- */
+.sky{ position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(680px 520px at 80% 12%, rgba(95,211,224,0.055), transparent 62%),
+    radial-gradient(520px 480px at 16% 98%, rgba(95,211,224,0.03), transparent 60%),
+    radial-gradient(120% 120% at 50% 32%, transparent 56%, rgba(0,0,0,0.52) 100%),
+    var(--abyss-1);
+}
+/* fixed starfield, baked as box-shadows (no runtime JS) — identical generator in both screens */
+.stars{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+.stars i{ position:absolute; top:0; left:0; }
+.dust{ width:1px; height:1px; border-radius:50%; color:rgba(230,234,242,0.35);
+  box-shadow:37px 490px,949px 593px,400px 559px,833px 476px,118px 356px,244px 32px,475px 100px,953px 380px,173px 200px,253px 147px,232px 270px,653px 95px,755px 540px,940px 324px,397px 696px,151px 206px,710px 689px,667px 170px,362px 72px,419px 420px,349px 156px,404px 401px,616px 281px,246px 522px,713px 254px,366px 282px,120px 518px,758px 72px,489px 671px,380px 246px,179px 280px,177px 325px,965px 281px,761px 39px,152px 198px,90px 657px,764px 524px,978px 684px,545px 403px,9px 717px,285px 525px,166px 240px,171px 364px,269px 140px,557px 515px,927px 293px,557px 286px,682px 505px,994px 542px,273px 458px,798px 67px,822px 709px,300px 366px,3px 664px,471px 181px,173px 682px,548px 317px,660px 90px,289px 216px,314px 10px;
+}
+.bright{ width:2px; height:2px; border-radius:50%; color:rgba(170,224,232,0.7);
+  box-shadow:887px 155px,793px 75px,724px 320px,959px 408px,133px 413px,883px 63px,592px 500px,501px 629px,213px 408px,161px 507px,113px 396px,551px 65px,717px 455px,599px 409px,233px 85px,89px 295px,355px 177px,330px 638px;
+}
+/* gold pinpoints — the single warm note, with a soft glow */
+.gold-star{ position:absolute; width:2px; height:2px; border-radius:50%;
+  background:var(--gold); box-shadow:0 0 5px 1px var(--gold-glow); }
+
+/* ---------- titlebar (shared chrome) ---------- */
+.titlebar{ position:relative; z-index:2; height:52px; flex:none;
+  display:flex; align-items:center; gap:14px; padding:0 16px;
+  border-bottom:1px solid var(--hairline); }
+.dots{ display:flex; gap:8px; }
+.dots span{ width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,0.10); }
+.titlebar .grow{ flex:1; }
+.wordmark{ font-size:13px; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-2); }
+
+/* ---------- micro labels (shared) ---------- */
+.ui-label{ font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:var(--text-3); }
+
+/* ---------- scrollbars (shared, everywhere) ---------- */
+*{ scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.12) transparent; }
+*::-webkit-scrollbar{ width:8px; height:8px; }
+*::-webkit-scrollbar-track{ background:transparent; }
+*::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.10); border-radius:8px; }
+*::-webkit-scrollbar-thumb:hover{ background:rgba(255,255,255,0.16); }
+
+/* ---------- buttons (shared families) ---------- */
+/* ghost = secondary actions: Open / Open CD / Cancel */
+.btn-ghost{ height:38px; padding:0 18px; border-radius:var(--r-md);
+  border:1px solid var(--hairline-strong); background:var(--surface-2);
+  color:var(--text-1); font-family:var(--font); font-size:13px; font-weight:500;
+  display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+  transition:background .15s ease, border-color .15s ease; }
+.btn-ghost:hover{ background:var(--surface-3); border-color:var(--cyan-line-24); }
+
+/* primary = the single saturated accent on a screen (dialog Open) */
+.btn-primary{ height:38px; padding:0 26px; border-radius:var(--r-md); border:1px solid var(--cyan);
+  background:var(--cyan-tint-16); color:var(--cyan-bright);
+  font-family:var(--font); font-size:13px; font-weight:600; letter-spacing:0.02em;
+  cursor:pointer; box-shadow:0 0 18px var(--cyan-glow); transition:background .15s ease; }
+.btn-primary:hover{ background:rgba(95,211,224,0.22); }
+
+/* ---------- selection state (shared across list rows, file rows, sidebar) ---------- */
+/* selected = quiet cyan tint + hairline ring. Cyan TEXT is reserved for playing/active only. */
+.row.selected,
+.frow.selected,
+.place.selected{ background:var(--cyan-tint-08); box-shadow:inset 0 0 0 1px var(--cyan-line-24); }
+.row.selected .t-title,
+.frow.selected .fname{ color:var(--text-1); }
