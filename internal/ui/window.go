@@ -195,6 +195,14 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 			return false
 		})
 		mw.progressBar.Connect("button-release-event", func() bool {
+			if mw.seeking && mw.player != nil {
+				val := mw.progressBar.GetValue()
+				length := mw.player.Length()
+				if length > 0 {
+					pos := time.Duration(float64(length) * val / 100.0)
+					mw.player.Seek(pos)
+				}
+			}
 			mw.seeking = false
 			return false
 		})
