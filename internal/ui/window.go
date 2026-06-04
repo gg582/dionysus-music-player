@@ -60,6 +60,7 @@ type MainWindow struct {
 	currentLyricLine int
 	lyricTagNow      *gtk.TextTag
 	lyricTagSung     *gtk.TextTag
+	lyricsCancel     chan struct{}
 	gtkSettings      *gtk.Settings
 	desktopSettings  *glib.Settings
 	seeking          bool
@@ -1056,6 +1057,10 @@ func (mw *MainWindow) onStop() {
 		mw.player.Stop()
 	}
 	mw.stopTicker()
+	if mw.lyricsCancel != nil {
+		close(mw.lyricsCancel)
+		mw.lyricsCancel = nil
+	}
 	mw.updateMPRISStatus()
 	if mw.timeLabel != nil {
 		mw.timeLabel.SetText("00:00")
@@ -1327,56 +1332,107 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 	if mw.lyricsView == nil {
 		return
 	}
-	buf, _ := mw.lyricsView.GetBuffer()
-	if buf != nil {
-		buf.SetText("")
+
+	// Cancel any in-flight lyrics fetch so old retries don't clobber new tracks.
+	if mw.lyricsCancel != nil {
+		close(mw.lyricsCancel)
 	}
+	cancel := make(chan struct{})
+	mw.lyricsCancel = cancel
+
+	// Snapshot fields so the goroutine doesn't race with slice mutations.
+	title := song.Title
+	if title == "" {
+		title = song.Name
+	}
+	artist := song.Artist
+	album := song.Album
+	durationSec := song.Duration
+	location := song.Location
+	isCD := song.IsCD
+	embeddedLyrics := song.Lyrics
+
+	// Clear lyrics view immediately.
+	glib.IdleAdd(func() bool {
+		if mw.lyricsView == nil {
+			return false
+		}
+		b, _ := mw.lyricsView.GetBuffer()
+		if b != nil {
+			b.SetText("")
+		}
+		mw.syncedLyrics = nil
+		mw.currentLyricLine = -1
+		return false
+	})
 
 	go func() {
 		lyrics := ""
-		if song.Lyrics != "" {
-			lyrics = song.Lyrics
-		} else if !song.IsCD && song.Location != "" {
-			meta, err := audio.ExtractMetadata(song.Location)
-			if err == nil && meta != nil && meta.Lyrics != "" {
+
+		// 1. Embedded / cached lyrics first (no retry needed).
+		if embeddedLyrics != "" {
+			lyrics = embeddedLyrics
+		} else if !isCD && location != "" {
+			if meta, err := audio.ExtractMetadata(location); err == nil && meta != nil && meta.Lyrics != "" {
 				lyrics = meta.Lyrics
 				song.Lyrics = meta.Lyrics
-			} else {
-				title := song.Title
-				if title == "" {
-					title = song.Name
+			}
+		}
+
+		// 2. LRCLIB with retries.
+		if lyrics == "" && strings.TrimSpace(title) != "" {
+			const maxRetries = 3
+			const retryInterval = 3 * time.Second
+
+			for attempt := 0; attempt < maxRetries; attempt++ {
+				if attempt > 0 {
+					select {
+					case <-cancel:
+						return
+					case <-time.After(retryInterval):
+					}
 				}
-				durationSec := song.Duration
-				if durationSec == 0 && mw.player != nil {
-					durationSec = int(mw.player.Length().Seconds())
+
+				d := durationSec
+				if d == 0 && mw.player != nil {
+					d = int(mw.player.Length().Seconds())
 				}
-				if online, err := audio.SearchLyrics(title, song.Artist, song.Album, durationSec); err == nil && online != "" {
+
+				if online, err := audio.SearchLyrics(title, artist, album, d); err == nil && online != "" {
 					lyrics = online
 					song.Lyrics = online
+					break
+				} else if err != nil {
+					log.Printf("LRCLIB search failed for %q (attempt %d/%d): %v", title, attempt+1, maxRetries, err)
 				}
 			}
 		}
 
-		// Parse synced lyrics
-		mw.syncedLyrics = audio.ParseSyncedLyrics(lyrics)
+		// 3. Parse synced lyrics.
+		synced := audio.ParseSyncedLyrics(lyrics)
 		displayText := lyrics
-		if len(mw.syncedLyrics) > 0 {
+		if len(synced) > 0 {
 			var texts []string
-			for _, l := range mw.syncedLyrics {
+			for _, l := range synced {
 				texts = append(texts, l.Text)
 			}
 			displayText = strings.Join(texts, "\n")
 		}
 
 		glib.IdleAdd(func() bool {
+			// If this fetch was cancelled, don't touch the UI.
+			select {
+			case <-cancel:
+				return false
+			default:
+			}
+
 			if mw.lyricsView == nil {
 				return false
 			}
 			b, _ := mw.lyricsView.GetBuffer()
 			if b != nil {
 				b.SetText(displayText)
-				// Create the highlight tags once: "now" = current line (cyan),
-				// "sung" = karaoke-filled portion of the current line (gold).
 				if mw.lyricTagNow == nil {
 					mw.lyricTagNow = b.CreateTag("now", map[string]interface{}{"foreground": "#6FE0EE"})
 				}
@@ -1384,6 +1440,7 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 					mw.lyricTagSung = b.CreateTag("sung", map[string]interface{}{"foreground": "#E8C879"})
 				}
 			}
+			mw.syncedLyrics = synced
 			mw.currentLyricLine = -1
 			return false
 		})

@@ -146,15 +146,27 @@ func fetchSingleLyrics(reqURL string) (string, error) {
 }
 
 func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum string, queryDuration int) *lrclibResult {
+	if len(results) == 0 {
+		return nil
+	}
+
 	qt := strings.ToLower(strings.TrimSpace(queryTitle))
 	qa := strings.ToLower(strings.TrimSpace(queryArtist))
 	qal := strings.ToLower(strings.TrimSpace(queryAlbum))
 
+	// Helper: lrclib sometimes returns empty trackName but filled name.
+	trackName := func(r lrclibResult) string {
+		if strings.TrimSpace(r.TrackName) != "" {
+			return r.TrackName
+		}
+		return r.Name
+	}
+
 	// 1. Exact title + artist matches: pick best by album & duration
 	var exactMatches []lrclibResult
-	for i := range results {
-		r := results[i]
-		if strings.EqualFold(r.TrackName, queryTitle) && (qa == "" || strings.EqualFold(r.ArtistName, queryArtist)) {
+	for _, r := range results {
+		tn := strings.TrimSpace(trackName(r))
+		if strings.EqualFold(tn, queryTitle) && (qa == "" || strings.EqualFold(r.ArtistName, queryArtist)) {
 			exactMatches = append(exactMatches, r)
 		}
 	}
@@ -194,7 +206,7 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 		return best
 	}
 
-	// 2. Fuzzy scoring with heavy weight on artist/album/duration
+	// 2. Fuzzy / substring scoring with heavy weight on artist/album/duration
 	type scored struct {
 		result lrclibResult
 		score  int
@@ -203,24 +215,39 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 
 	for i := range results {
 		r := results[i]
+		tn := strings.ToLower(strings.TrimSpace(trackName(r)))
 		score := 0
 
-		// Title is most important
-		if s := matchScore(qt, r.TrackName); s > 0 {
+		// Title is most important: exact > fuzzy > substring
+		if strings.EqualFold(tn, qt) {
+			score += 10000
+		} else if s := matchScore(qt, tn); s > 0 {
 			score += s * 3
+		} else if strings.Contains(tn, qt) || strings.Contains(qt, tn) {
+			score += 500
 		}
 
 		// Artist match
 		if qa != "" {
-			if s := matchScore(qa, r.ArtistName); s > 0 {
+			an := strings.ToLower(strings.TrimSpace(r.ArtistName))
+			if strings.EqualFold(an, qa) {
+				score += 5000
+			} else if s := matchScore(qa, an); s > 0 {
 				score += s * 2
+			} else if strings.Contains(an, qa) || strings.Contains(qa, an) {
+				score += 200
 			}
 		}
 
 		// Album match
 		if qal != "" {
-			if s := matchScore(qal, r.AlbumName); s > 0 {
+			aln := strings.ToLower(strings.TrimSpace(r.AlbumName))
+			if strings.EqualFold(aln, qal) {
+				score += 3000
+			} else if s := matchScore(qal, aln); s > 0 {
 				score += s * 2
+			} else if strings.Contains(aln, qal) || strings.Contains(qal, aln) {
+				score += 100
 			}
 		}
 
@@ -231,13 +258,13 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 				diff = -diff
 			}
 			if diff <= 3 {
-				score += 1000
+				score += 1500
 			} else if diff <= 10 {
-				score += 500
+				score += 800
 			} else if diff <= 30 {
-				score += 200
+				score += 300
 			} else if diff <= 60 {
-				score += 50
+				score += 100
 			}
 		}
 
@@ -247,10 +274,9 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 	}
 
 	if len(scoredResults) == 0 {
-		if len(results) > 0 {
-			return &results[0]
-		}
-		return nil
+		// Don't be too strict: LRCLIB already ranked results.
+		// If nothing scored above zero, just trust the server's first result.
+		return &results[0]
 	}
 
 	sort.Slice(scoredResults, func(i, j int) bool {
