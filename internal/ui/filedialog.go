@@ -199,6 +199,20 @@ func (mw *MainWindow) openCosmicFileDialog() {
 		return false
 	})
 
+	win.Connect("destroy", func() {
+		mw.fileDialogWin = nil
+	})
+
+	// Apply current theme class to the dialog window
+	if ctx, err := win.GetStyleContext(); err == nil && ctx != nil {
+		if mw.themeMode == "light" || (mw.themeMode == "system" && !prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)) {
+			ctx.AddClass(themeClassLight)
+		} else {
+			ctx.AddClass(themeClassDark)
+		}
+	}
+	mw.fileDialogWin = win
+
 	// open on Recent by default (like the mockup)
 	d.showRecent()
 	win.ShowAll()

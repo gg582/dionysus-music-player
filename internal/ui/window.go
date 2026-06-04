@@ -74,6 +74,7 @@ type MainWindow struct {
 	themeMode        string
 	inThemeUpdate    bool
 	themeButton      *gtk.Button
+	fileDialogWin    *gtk.Window
 	mprisServer      *mpris.Server
 }
 
@@ -366,6 +367,18 @@ func (mw *MainWindow) applySystemTheme() {
 		}
 	}
 	mw.updateThemeButtonIcon()
+
+	if mw.fileDialogWin != nil {
+		if ctx, err := mw.fileDialogWin.GetStyleContext(); err == nil && ctx != nil {
+			if dark {
+				ctx.RemoveClass(themeClassLight)
+				ctx.AddClass(themeClassDark)
+			} else {
+				ctx.RemoveClass(themeClassDark)
+				ctx.AddClass(themeClassLight)
+			}
+		}
+	}
 }
 
 func (mw *MainWindow) onThemeToggle() {
