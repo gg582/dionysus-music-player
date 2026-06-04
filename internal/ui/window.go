@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"math/rand"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"github.com/gg582/gozik/internal/cdrom"
 	"github.com/gg582/gozik/internal/config"
 	"github.com/gg582/gozik/internal/models"
+	"github.com/gg582/gozik/internal/mpris"
 	"github.com/gg582/gozik/internal/utils"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -66,8 +68,12 @@ type MainWindow struct {
 	playMode         models.PlayMode
 	btnRepeat        *gtk.Button
 	btnRepeatLabel   *gtk.Label
+	shuffle          bool
+	btnShuffle       *gtk.Button
+	btnShuffleLabel  *gtk.Label
 	themeMode        string
 	themeButton      *gtk.Button
+	mprisServer      *mpris.Server
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -267,6 +273,8 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 		mw.player.SetVolume(1.0)
 	}
 
+	mw.initMPRIS()
+
 	mw.win.Connect("destroy", func() {
 		mw.onQuit(app)
 	})
@@ -440,6 +448,8 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"Play":      mw.onPlay,
 		"Pause":     mw.onPause,
 		"Stop":      mw.onStop,
+		"Stop1":     mw.onPrev,
+		"Stop2":     mw.onNext,
 		"BtnOpen":    mw.onFileOpen,
 		"BtnOpenCD":  mw.onOpenCD,
 		"BtnRemove":  mw.removeSelectedSong,
@@ -478,6 +488,19 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		}
 	}
 	mw.updateRepeatButton()
+
+	if obj, err := builder.GetObject("BtnShuffle"); err == nil {
+		if btn, ok := obj.(*gtk.Button); ok {
+			mw.btnShuffle = btn
+			btn.Connect("clicked", mw.onToggleShuffle)
+		}
+	}
+	if obj, err := builder.GetObject("BtnShuffleLabel"); err == nil {
+		if lbl, ok := obj.(*gtk.Label); ok {
+			mw.btnShuffleLabel = lbl
+		}
+	}
+	mw.updateShuffleButton()
 
 	mw.preMuteVol = 1.0
 	if obj, err := builder.GetObject("VolumeScale"); err == nil {
@@ -986,6 +1009,8 @@ func (mw *MainWindow) onPlay() {
 	if mw.volumeScale != nil {
 		mw.player.SetVolume(mw.volumeScale.GetValue())
 	}
+	mw.updateMPRISStatus()
+	mw.updateMPRISMetadata()
 	mw.loadSongInfo(&mw.songs[idx])
 	mw.loadLyrics(&mw.songs[idx])
 	mw.startTicker()
@@ -997,6 +1022,7 @@ func (mw *MainWindow) onPause() {
 	if mw.player != nil {
 		mw.player.Pause()
 	}
+	mw.updateMPRISStatus()
 	if mw.player != nil && !mw.player.IsPlaying() {
 		mw.setEngaged(mw.btnPause)
 	} else {
@@ -1009,6 +1035,7 @@ func (mw *MainWindow) onStop() {
 		mw.player.Stop()
 	}
 	mw.stopTicker()
+	mw.updateMPRISStatus()
 	if mw.timeLabel != nil {
 		mw.timeLabel.SetText("00:00")
 	}
@@ -1043,6 +1070,26 @@ func (mw *MainWindow) onTrackFinished() {
 	}
 }
 
+func (mw *MainWindow) onNext() {
+	mw.playNext()
+}
+
+func (mw *MainWindow) onPrev() {
+	if mw.listBox == nil || len(mw.songs) == 0 {
+		return
+	}
+	row := mw.listBox.GetSelectedRow()
+	if row == nil {
+		return
+	}
+	prevIdx := row.GetIndex() - 1
+	if prevIdx < 0 {
+		prevIdx = 0
+	}
+	mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(prevIdx))
+	mw.onPlay()
+}
+
 func (mw *MainWindow) playNext() bool {
 	if mw.listBox == nil || len(mw.songs) == 0 {
 		return false
@@ -1051,13 +1098,46 @@ func (mw *MainWindow) playNext() bool {
 	if row == nil {
 		return false
 	}
-	nextIdx := row.GetIndex() + 1
-	if nextIdx >= len(mw.songs) {
-		return false
+	currentIdx := row.GetIndex()
+	var nextIdx int
+	if mw.shuffle && len(mw.songs) > 1 {
+		for {
+			nextIdx = rand.Intn(len(mw.songs))
+			if nextIdx != currentIdx {
+				break
+			}
+		}
+	} else {
+		nextIdx = currentIdx + 1
+		if nextIdx >= len(mw.songs) {
+			return false
+		}
 	}
 	mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(nextIdx))
 	mw.onPlay()
 	return true
+}
+
+func (mw *MainWindow) onToggleShuffle() {
+	mw.shuffle = !mw.shuffle
+	mw.updateShuffleButton()
+}
+
+func (mw *MainWindow) updateShuffleButton() {
+	if mw.btnShuffleLabel == nil {
+		return
+	}
+	if mw.shuffle {
+		mw.btnShuffleLabel.SetText("\U0001F500")
+		if mw.btnShuffle != nil {
+			mw.btnShuffle.SetTooltipText("Shuffle on")
+		}
+	} else {
+		mw.btnShuffleLabel.SetText("\u2194")
+		if mw.btnShuffle != nil {
+			mw.btnShuffle.SetTooltipText("Shuffle off")
+		}
+	}
 }
 
 func (mw *MainWindow) onToggleRepeat() {
