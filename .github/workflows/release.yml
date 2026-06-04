@@ -19,6 +19,9 @@ jobs:
           curl -sL -o /tmp/opus.tar.gz https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
           echo "opus_sha256=$(sha256sum /tmp/opus.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
+          curl -sL -o /tmp/opusfile.tar.gz https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz
+          echo "opusfile_sha256=$(sha256sum /tmp/opusfile.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
           curl -sL -o /tmp/ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
           echo "ffmpeg_sha256=$(sha256sum /tmp/ffmpeg.tar.xz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
@@ -57,6 +60,23 @@ jobs:
                     "type": "archive",
                     "url": "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz",
                     "sha256": "OPUS_SHA256"
+                  }
+                ]
+              },
+              {
+                "name": "opusfile",
+                "buildsystem": "autotools",
+                "config-opts": [
+                  "--disable-shared",
+                  "--enable-static",
+                  "--disable-doc",
+                  "--disable-examples"
+                ],
+                "sources": [
+                  {
+                    "type": "archive",
+                    "url": "https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz",
+                    "sha256": "OPUSFILE_SHA256"
                   }
                 ]
               },
@@ -102,6 +122,7 @@ jobs:
           }
           MANIFEST
           sed -i "s/OPUS_SHA256/${{ steps.hashes.outputs.opus_sha256 }}/g" com.gosuda.gozik.player.json
+          sed -i "s/OPUSFILE_SHA256/${{ steps.hashes.outputs.opusfile_sha256 }}/g" com.gosuda.gozik.player.json
           sed -i "s/FFMPEG_SHA256/${{ steps.hashes.outputs.ffmpeg_sha256 }}/g" com.gosuda.gozik.player.json
 
       - name: Build Flatpak
@@ -135,6 +156,7 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-gtk3
             mingw-w64-x86_64-libopus
+            mingw-w64-x86_64-opusfile
             mingw-w64-x86_64-pkg-config
 
       - name: Build gozik
@@ -177,7 +199,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install gtk+3 opus create-dmg
+          brew install gtk+3 opus opusfile create-dmg
 
       - name: Build gozik
         run: |

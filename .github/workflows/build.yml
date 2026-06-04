@@ -32,7 +32,7 @@ jobs:
         if: matrix.native
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev
+          sudo apt-get install -y libgtk-3-dev libopusfile-dev
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - name: Set up QEMU
         if: ${{ !matrix.native }}
@@ -45,7 +45,7 @@ jobs:
             ubuntu:24.04 bash -c "
               set -e
               apt-get update
-              apt-get install -y golang-go git gcc libc6-dev libgtk-3-dev ca-certificates
+              apt-get install -y golang-go git gcc libc6-dev libgtk-3-dev libopusfile-dev ca-certificates
               export PATH=\$PATH:\$(go env GOPATH)/bin
               go install golang.org/dl/go1.25@latest
               go1.25 download
@@ -82,6 +82,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-opusfile
             mingw-w64-x86_64-pkg-config
       - name: Build amd64
         if: matrix.arch == 'amd64'
@@ -124,7 +125,7 @@ jobs:
           go-version: '1.25.0'
       - name: Install dependencies
         run: |
-          brew install gtk+3 pkg-config
+          brew install gtk+3 pkg-config opus opusfile
       - name: Build
         run: |
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
