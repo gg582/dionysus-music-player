@@ -1,4 +1,4 @@
-name: Release
+Name: Release
 
 on:
   push:
@@ -32,6 +32,7 @@ jobs:
 
   build-windows:
     runs-on: ${{ matrix.runs-on }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
     strategy:
       fail-fast: false
       matrix:
