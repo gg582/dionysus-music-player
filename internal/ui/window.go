@@ -63,6 +63,9 @@ type MainWindow struct {
 	seeking          bool
 	settingProgress  bool
 	closing          atomic.Bool
+	playMode         models.PlayMode
+	btnRepeat        *gtk.Button
+	btnRepeatLabel   *gtk.Label
 	themeMode        string
 	themeButton      *gtk.Button
 }
@@ -220,6 +223,11 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 		case gdk.KEY_o:
 			if ev.State()&gdk.CONTROL_MASK != 0 {
 				mw.onFileOpen()
+				return true
+			}
+		case gdk.KEY_u:
+			if ev.State()&gdk.CONTROL_MASK != 0 {
+				mw.onOpenStream()
 				return true
 			}
 		case gdk.KEY_d:
@@ -458,6 +466,19 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		}
 	}
 
+	if obj, err := builder.GetObject("BtnRepeat"); err == nil {
+		if btn, ok := obj.(*gtk.Button); ok {
+			mw.btnRepeat = btn
+			btn.Connect("clicked", mw.onToggleRepeat)
+		}
+	}
+	if obj, err := builder.GetObject("BtnRepeatLabel"); err == nil {
+		if lbl, ok := obj.(*gtk.Label); ok {
+			mw.btnRepeatLabel = lbl
+		}
+	}
+	mw.updateRepeatButton()
+
 	mw.preMuteVol = 1.0
 	if obj, err := builder.GetObject("VolumeScale"); err == nil {
 		if vol, ok := obj.(*gtk.Scale); ok {
@@ -649,27 +670,87 @@ func (mw *MainWindow) onFileOpen() {
 	mw.openCosmicFileDialog()
 }
 
+func (mw *MainWindow) onOpenStream() {
+	dlg, err := gtk.DialogNewWithButtons("Open Stream", mw.win, gtk.DIALOG_MODAL,
+		[]interface{}{"Cancel", gtk.RESPONSE_CANCEL, "Open", gtk.RESPONSE_ACCEPT})
+	if err != nil {
+		return
+	}
+	dlg.SetDefaultSize(480, -1)
+
+	content, _ := dlg.GetContentArea()
+	entry, _ := gtk.EntryNew()
+	entry.SetPlaceholderText("https://example.com/stream.mp3")
+	entry.SetMarginTop(12)
+	entry.SetMarginBottom(12)
+	entry.SetMarginStart(12)
+	entry.SetMarginEnd(12)
+	content.PackStart(entry, false, false, 0)
+	content.ShowAll()
+
+	resp := dlg.Run()
+	url, _ := entry.GetText()
+	dlg.Destroy()
+
+	if resp == gtk.RESPONSE_ACCEPT && strings.TrimSpace(url) != "" {
+		mw.LoadFiles([]string{strings.TrimSpace(url)})
+	}
+}
+
 // LoadFiles adds audio files (or .m3u playlists) to the queue programmatically,
 // e.g. from command-line arguments: `gozik song1.flac song2.mp3`.
 func (mw *MainWindow) LoadFiles(paths []string) {
 	for _, f := range paths {
+		if audio.IsStreamURL(f) {
+			song := models.Song{Name: f, Location: f}
+			mw.songs = append(mw.songs, song)
+			mw.appendSongToList(song)
+			continue
+		}
 		ext := strings.ToLower(filepath.Ext(f))
 		if len(ext) > 1 {
 			ext = ext[1:]
 		}
-		if ext == "m3u" || ext == "m3u8" {
-			entries, err := audio.ParseM3U(f)
+		if ext == "m3u" || ext == "m3u8" || ext == "pls" || ext == "xspf" {
+			var entries []string
+			var err error
+			switch ext {
+			case "m3u", "m3u8":
+				entries, err = audio.ParseM3U(f)
+			case "pls":
+				entries, err = audio.ParsePLS(f)
+			case "xspf":
+				entries, err = audio.ParseXSPF(f)
+			}
 			utils.ErrorHandler(err, "parsing playlist", logLevel, "warn")
 			for _, entry := range entries {
+				if audio.IsStreamURL(entry) {
+					song := models.Song{Name: entry, Location: entry}
+					mw.songs = append(mw.songs, song)
+					mw.appendSongToList(song)
+					continue
+				}
 				e := strings.ToLower(filepath.Ext(entry))
 				if len(e) > 1 {
 					e = e[1:]
 				}
-				if isSupported(e) && e != "m3u" && e != "m3u8" {
+				if isSupported(e) && e != "m3u" && e != "m3u8" && e != "cue" && e != "pls" && e != "xspf" {
 					song := models.Song{Name: filepath.Base(entry), Location: entry}
 					mw.songs = append(mw.songs, song)
 					mw.appendSongToList(song)
 				}
+			}
+			continue
+		}
+		if ext == "cue" {
+			songs, err := audio.ParseCUE(f)
+			if err != nil {
+				log.Printf("Failed to parse CUE %s: %v", f, err)
+				continue
+			}
+			for _, s := range songs {
+				mw.songs = append(mw.songs, s)
+				mw.appendSongToList(s)
 			}
 			continue
 		}
@@ -869,21 +950,25 @@ func (mw *MainWindow) onPlay() {
 
 	song := mw.songs[idx]
 
-	// Check if the same song is already loaded (paused or playing)
+	// Check if the same song/segment is already loaded (paused or playing)
 	alreadyLoaded := false
 	if song.IsCD {
 		alreadyLoaded = mw.player.IsCDLoaded() &&
 			mw.player.CurrentDevice() == song.Device &&
 			mw.player.CurrentTrack() == song.TrackNum
 	} else {
+		pStart, pEnd := mw.player.CurrentSegment()
 		alreadyLoaded = !mw.player.IsCDLoaded() &&
-			mw.player.CurrentFile() == song.Location
+			mw.player.CurrentFile() == song.Location &&
+			pStart == song.StartOffset && pEnd == song.EndOffset
 	}
 
 	if !alreadyLoaded {
 		var err error
 		if song.IsCD {
 			err = mw.player.LoadCD(song.Device, song.TrackNum)
+		} else if song.StartOffset > 0 || song.EndOffset > 0 {
+			err = mw.player.LoadSegment(song.Location, song.StartOffset, song.EndOffset)
 		} else {
 			err = mw.player.Load(song.Location)
 		}
@@ -896,6 +981,10 @@ func (mw *MainWindow) onPlay() {
 	if err := mw.player.Play(); err != nil {
 		log.Println("Failed to play:", err)
 		return
+	}
+	// Re-apply current volume so ReplayGain is refreshed for the new track.
+	if mw.volumeScale != nil {
+		mw.player.SetVolume(mw.volumeScale.GetValue())
 	}
 	mw.loadSongInfo(&mw.songs[idx])
 	mw.loadLyrics(&mw.songs[idx])
@@ -933,6 +1022,68 @@ func (mw *MainWindow) onStop() {
 	mw.setEngaged(nil)
 }
 
+func (mw *MainWindow) onTrackFinished() {
+	switch mw.playMode {
+	case models.PlayModeRepeatOne:
+		mw.onStop()
+		mw.onPlay()
+	case models.PlayModeRepeatAll:
+		if !mw.playNext() {
+			if len(mw.songs) > 0 {
+				mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(0))
+				mw.onPlay()
+			} else {
+				mw.onStop()
+			}
+		}
+	default: // Sequential
+		if !mw.playNext() {
+			mw.onStop()
+		}
+	}
+}
+
+func (mw *MainWindow) playNext() bool {
+	if mw.listBox == nil || len(mw.songs) == 0 {
+		return false
+	}
+	row := mw.listBox.GetSelectedRow()
+	if row == nil {
+		return false
+	}
+	nextIdx := row.GetIndex() + 1
+	if nextIdx >= len(mw.songs) {
+		return false
+	}
+	mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(nextIdx))
+	mw.onPlay()
+	return true
+}
+
+func (mw *MainWindow) onToggleRepeat() {
+	mw.playMode = mw.playMode.Next()
+	mw.updateRepeatButton()
+}
+
+func (mw *MainWindow) updateRepeatButton() {
+	if mw.btnRepeatLabel == nil {
+		return
+	}
+	var label string
+	switch mw.playMode {
+	case models.PlayModeSequential:
+		label = "\u27A1"
+	case models.PlayModeRepeatAll:
+		label = "\U0001F501"
+	case models.PlayModeRepeatOne:
+		label = "\U0001F502"
+	}
+	mw.btnRepeatLabel.SetText(label)
+	if mw.btnRepeat != nil {
+		mw.btnRepeat.SetTooltipText(mw.playMode.String())
+	}
+}
+
 func (mw *MainWindow) startTicker() {
 	mw.stopTicker()
 	mw.ticker = time.NewTicker(100 * time.Millisecond)
@@ -960,7 +1111,7 @@ func (mw *MainWindow) startTicker() {
 						mw.settingProgress = false
 					}
 					if pos >= length && length > 0 {
-						mw.onStop()
+						mw.onTrackFinished()
 					}
 
 					// Sync lyrics: current line in cyan, karaoke gold fill across it
@@ -1415,7 +1566,7 @@ func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscReleas
 
 func isSupported(ext string) bool {
 	switch ext {
-	case "mp3", "flac", "ogg", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "m3u", "m3u8":
+	case "mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "m3u", "m3u8", "cue", "pls", "xspf":
 		return true
 	}
 	return false

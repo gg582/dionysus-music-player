@@ -15,4 +15,7 @@ type Song struct {
 	Lyrics      string
 	CoverArtURL string
 	CoverData   []byte
+	// CUE segment playback (seconds; EndOffset=0 means until file end)
+	StartOffset int
+	EndOffset   int
 }

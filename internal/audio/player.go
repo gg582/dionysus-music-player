@@ -48,6 +48,9 @@ type Player struct {
 	currentDevice string
 	currentTrack  int
 	isCD          bool
+	currentStart  int // seconds
+	currentEnd    int // seconds
+	replayGain    float64 // log2-scaled gain correction
 }
 
 func NewPlayer() (*Player, error) {
@@ -76,6 +79,9 @@ func (p *Player) reset() {
 	p.currentDevice = ""
 	p.currentTrack = 0
 	p.isCD = false
+	p.currentStart = 0
+	p.currentEnd = 0
+	p.replayGain = 0
 	p.format = beep.Format{}
 	p.mu.Unlock()
 
@@ -119,6 +125,9 @@ func (p *Player) initSpeaker() error {
 // ProbeDuration decodes a file just far enough to read its total length, then
 // closes it. Used to compute the queue's total play time without playback.
 func ProbeDuration(filename string) (time.Duration, error) {
+	if IsStreamURL(filename) {
+		return 0, nil
+	}
 	f, err := os.Open(filename)
 	if err != nil {
 		return 0, err
@@ -135,6 +144,8 @@ func ProbeDuration(filename string) (time.Duration, error) {
 		streamer, format, err = wav.Decode(f)
 	case "ogg":
 		streamer, format, err = vorbis.Decode(f)
+	case "opus":
+		streamer, format, err = decodeOpus(f)
 	case "aiff", "aif":
 		streamer, format, err = decodeAIFF(f)
 	case "pcm", "raw":
@@ -157,6 +168,12 @@ func ProbeDuration(filename string) (time.Duration, error) {
 }
 
 func (p *Player) Load(filename string) error {
+	return p.LoadSegment(filename, 0, 0)
+}
+
+// LoadSegment loads a file and restricts playback to the [startSec,endSec)
+// range.  endSec=0 means "until the end of the file".
+func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 	p.reset()
 
 	f, err := os.Open(filename)
@@ -167,30 +184,52 @@ func (p *Player) Load(filename string) error {
 	ext := strings.ToLower(filename[strings.LastIndex(filename, ".")+1:])
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
+	useSegment := false
 
-	switch ext {
-	case "mp3":
-		streamer, format, err = mp3.Decode(f)
-	case "flac":
-		streamer, format, err = flac.Decode(f)
-	case "wav":
-		streamer, format, err = wav.Decode(f)
-	case "ogg":
-		streamer, format, err = vorbis.Decode(f)
-	case "aiff", "aif":
-		streamer, format, err = decodeAIFF(f)
-	case "pcm", "raw":
-		streamer, format, err = decodePCM(f)
-	default:
+	if IsStreamURL(filename) {
 		f.Close()
-		streamer, format, err = decodeFFmpeg(filename)
+		streamer, format, err = decodeFFmpegStream(filename)
+	} else {
+		switch ext {
+		case "mp3":
+			streamer, format, err = mp3.Decode(f)
+			useSegment = true
+		case "flac":
+			streamer, format, err = flac.Decode(f)
+			useSegment = true
+		case "wav":
+			streamer, format, err = wav.Decode(f)
+			useSegment = true
+		case "ogg":
+			streamer, format, err = vorbis.Decode(f)
+			useSegment = true
+		case "opus":
+			streamer, format, err = decodeOpus(f)
+			useSegment = true
+		case "aiff", "aif":
+			streamer, format, err = decodeAIFF(f)
+			useSegment = true
+		case "pcm", "raw":
+			streamer, format, err = decodePCM(f)
+			useSegment = true
+		default:
+			f.Close()
+			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
+		}
+
+		if err != nil {
+			f.Close()
+			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	if err != nil {
-		f.Close()
-		streamer, format, err = decodeFFmpeg(filename)
-		if err != nil {
-			return err
+	if useSegment && (startSec > 0 || endSec > 0) {
+		seg, segErr := NewSegmentStreamer(streamer, format, startSec, endSec)
+		if segErr == nil {
+			streamer = seg
 		}
 	}
 
@@ -210,7 +249,17 @@ func (p *Player) Load(filename string) error {
 	p.currentDevice = ""
 	p.currentTrack = 0
 	p.isCD = false
+	p.currentStart = startSec
+	p.currentEnd = endSec
+	p.replayGain = 0
 	p.mu.Unlock()
+
+	if gain, err := ExtractReplayGain(filename); err == nil && gain != 0 {
+		// Convert dB to log2 scale: log2(10^(db/20)) = db * log2(10) / 20
+		p.mu.Lock()
+		p.replayGain = gain * (math.Log2(10) / 20)
+		p.mu.Unlock()
+	}
 
 	return nil
 }
@@ -272,6 +321,12 @@ func (p *Player) CurrentFile() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.currentFile
+}
+
+func (p *Player) CurrentSegment() (startSec, endSec int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.currentStart, p.currentEnd
 }
 
 func (p *Player) CurrentDevice() string {
@@ -383,6 +438,7 @@ func (p *Player) Stop() {
 func (p *Player) SetVolume(v float64) {
 	p.mu.Lock()
 	volume := p.volume
+	replayGain := p.replayGain
 	p.mu.Unlock()
 	if volume == nil {
 		return
@@ -391,7 +447,7 @@ func (p *Player) SetVolume(v float64) {
 		v = 0.0001
 	}
 	speaker.Lock()
-	volume.Volume = math.Log2(v)
+	volume.Volume = math.Log2(v) + replayGain
 	speaker.Unlock()
 }
 

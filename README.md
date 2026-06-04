@@ -1,5 +1,7 @@
 # Gozik
 
+![Gozik Screenshot](./gozik.png)
+
 A simple desktop music player for Linux. It plays local audio files and audio CDs with a minimal GTK3 interface.
 
 ## Supported Formats

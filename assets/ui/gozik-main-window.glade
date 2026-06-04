@@ -413,6 +413,29 @@
                       </packing>
                     </child>
                     <child>
+                      <object class="GtkButton" id="BtnRepeat">
+                        <property name="name">BtnRepeat</property>
+                        <property name="visible">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="focus-on-click">False</property>
+                        <property name="receives-default">True</property>
+                        <property name="width-request">44</property>
+                        <property name="height-request">36</property>
+                        <property name="tooltip-text">Repeat mode</property>
+                        <child>
+                          <object class="GtkLabel" id="BtnRepeatLabel">
+                            <property name="visible">True</property>
+                            <property name="label">&#x27A1;</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">False</property>
+                        <property name="position">5</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkBox" id="VolumeGroup">
                         <property name="name">VolumeGroup</property>
                         <property name="visible">True</property>
@@ -462,7 +485,7 @@
                         <property name="expand">False</property>
                         <property name="fill">False</property>
                         <property name="pack-type">end</property>
-                        <property name="position">5</property>
+                        <property name="position">6</property>
                       </packing>
                     </child>
                   </object>
