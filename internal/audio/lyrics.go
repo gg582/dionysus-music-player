@@ -13,7 +13,10 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-const lrclibSearchURL = "https://lrclib.net/api/search"
+const (
+	lrclibSearchURL = "https://lrclib.net/api/search"
+	lrclibGetURL    = "https://lrclib.net/api/get"
+)
 
 type lrclibResult struct {
 	ID           int    `json:"id"`
@@ -28,20 +31,48 @@ type lrclibResult struct {
 }
 
 // SearchLyrics queries lrclib.net for lyrics using the track title, artist, album and duration.
-// It performs fuzzy matching to pick the best candidate from the results.
+// It first tries the direct /get endpoint (most accurate), then falls back to /search with fuzzy matching.
 func SearchLyrics(title, artist, album string, durationSec int) (string, error) {
 	if strings.TrimSpace(title) == "" {
 		return "", fmt.Errorf("empty title")
 	}
 
+	// 1. Try direct lookup first (exact match by all available fields)
 	q := url.Values{}
 	q.Set("track_name", strings.TrimSpace(title))
 	if strings.TrimSpace(artist) != "" {
 		q.Set("artist_name", strings.TrimSpace(artist))
 	}
+	if strings.TrimSpace(album) != "" {
+		q.Set("album_name", strings.TrimSpace(album))
+	}
+	if durationSec > 0 {
+		q.Set("duration", strconv.Itoa(durationSec))
+	}
 
-	reqURL := fmt.Sprintf("%s?%s", lrclibSearchURL, q.Encode())
-	resp, err := http.Get(reqURL)
+	reqURL := fmt.Sprintf("%s?%s", lrclibGetURL, q.Encode())
+	if lyrics, err := fetchSingleLyrics(reqURL); err == nil && lyrics != "" {
+		return lyrics, nil
+	}
+
+	// 2. Fallback to search endpoint
+	q = url.Values{}
+	q.Set("track_name", strings.TrimSpace(title))
+	if strings.TrimSpace(artist) != "" {
+		q.Set("artist_name", strings.TrimSpace(artist))
+	}
+	if strings.TrimSpace(album) != "" {
+		q.Set("album_name", strings.TrimSpace(album))
+	}
+
+	reqURL = fmt.Sprintf("%s?%s", lrclibSearchURL, q.Encode())
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "GozikMusicPlayer/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -75,6 +106,43 @@ func SearchLyrics(title, artist, album string, durationSec int) (string, error) 
 		return stripSyncTags(best.SyncedLyrics), nil
 	}
 	return "", fmt.Errorf("empty lyrics in result")
+}
+
+func fetchSingleLyrics(reqURL string) (string, error) {
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "GozikMusicPlayer/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", fmt.Errorf("not found")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("lrclib get returned %d", resp.StatusCode)
+	}
+
+	var result lrclibResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Instrumental {
+		return "(Instrumental)", nil
+	}
+	if result.PlainLyrics != "" {
+		return result.PlainLyrics, nil
+	}
+	if result.SyncedLyrics != "" {
+		return stripSyncTags(result.SyncedLyrics), nil
+	}
+	return "", fmt.Errorf("empty lyrics")
 }
 
 func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum string, queryDuration int) *lrclibResult {

@@ -1487,6 +1487,11 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 						})
 					}
 				}
+
+				// Re-attempt lyrics fetch now that MB metadata (artist/title/album) is available.
+				if song.Lyrics == "" {
+					go mw.loadLyrics(song)
+				}
 			})
 		}
 	}()
