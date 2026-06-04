@@ -28,6 +28,9 @@ jobs:
           curl -sL -o /tmp/ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
           echo "ffmpeg_sha256=$(sha256sum /tmp/ffmpeg.tar.xz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
+          curl -sL -o /tmp/go.tar.gz https://go.dev/dl/go1.25.6.linux-amd64.tar.gz
+          echo "go_sha256=$(sha256sum /tmp/go.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Generate Flatpak manifest
         run: |
           cat > com.gosuda.gozik.player.json <<'MANIFEST'
@@ -102,9 +105,7 @@ jobs:
                 "name": "gozik",
                 "buildsystem": "simple",
                 "build-commands": [
-                  "curl -sL https://go.dev/dl/go1.25.6.linux-amd64.tar.gz -o go.tar.gz",
-                  "tar -C /tmp -xzf go.tar.gz",
-                  "export PATH=/tmp/go/bin:$PATH",
+                  "export PATH=$PWD/go/bin:$PATH",
                   "export CGO_ENABLED=1",
                   "go build -ldflags='-s -w -X github.com/gg582/gozik/internal/config.Prefix=/app' -o /app/bin/gozik ./cmd/gozik",
                   "install -Dm644 assets/ui/gozik-main-window.glade /app/share/gozik/ui/gozik-main-window.glade",
@@ -118,6 +119,11 @@ jobs:
                   {
                     "type": "dir",
                     "path": "."
+                  },
+                  {
+                    "type": "archive",
+                    "url": "https://go.dev/dl/go1.25.6.linux-amd64.tar.gz",
+                    "sha256": "GO_SHA256"
                   }
                 ]
               }
@@ -127,6 +133,7 @@ jobs:
           sed -i "s/OPUS_SHA256/${{ steps.hashes.outputs.opus_sha256 }}/g" com.gosuda.gozik.player.json
           sed -i "s/OPUSFILE_SHA256/${{ steps.hashes.outputs.opusfile_sha256 }}/g" com.gosuda.gozik.player.json
           sed -i "s/FFMPEG_SHA256/${{ steps.hashes.outputs.ffmpeg_sha256 }}/g" com.gosuda.gozik.player.json
+          sed -i "s/GO_SHA256/${{ steps.hashes.outputs.go_sha256 }}/g" com.gosuda.gozik.player.json
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
