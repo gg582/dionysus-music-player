@@ -72,6 +72,7 @@ type MainWindow struct {
 	btnShuffle       *gtk.Button
 	btnShuffleLabel  *gtk.Label
 	themeMode        string
+	inThemeUpdate    bool
 	themeButton      *gtk.Button
 	mprisServer      *mpris.Server
 }
@@ -323,9 +324,12 @@ func (mw *MainWindow) bindSystemTheme(settings *gtk.Settings) {
 }
 
 func (mw *MainWindow) applySystemTheme() {
-	if mw.win == nil {
+	if mw.win == nil || mw.inThemeUpdate {
 		return
 	}
+	mw.inThemeUpdate = true
+	defer func() { mw.inThemeUpdate = false }()
+
 	ctx, err := mw.win.GetStyleContext()
 	utils.ErrorHandler(err, "getting window style context", logLevel, "warn")
 	if ctx == nil {
@@ -348,13 +352,17 @@ func (mw *MainWindow) applySystemTheme() {
 		ctx.RemoveClass(themeClassLight)
 		ctx.AddClass(themeClassDark)
 		if mw.gtkSettings != nil {
-			mw.gtkSettings.SetProperty("gtk-application-prefer-dark-theme", true)
+			if cur, err := mw.gtkSettings.GetProperty("gtk-application-prefer-dark-theme"); err != nil || cur != true {
+				mw.gtkSettings.SetProperty("gtk-application-prefer-dark-theme", true)
+			}
 		}
 	} else {
 		ctx.RemoveClass(themeClassDark)
 		ctx.AddClass(themeClassLight)
 		if mw.gtkSettings != nil {
-			mw.gtkSettings.SetProperty("gtk-application-prefer-dark-theme", false)
+			if cur, err := mw.gtkSettings.GetProperty("gtk-application-prefer-dark-theme"); err != nil || cur != false {
+				mw.gtkSettings.SetProperty("gtk-application-prefer-dark-theme", false)
+			}
 		}
 	}
 	mw.updateThemeButtonIcon()
