@@ -118,6 +118,14 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 		return nil, fmt.Errorf("object is not *gtk.ApplicationWindow")
 	}
 	mw.win = win
+
+	headerBar, err := gtk.HeaderBarNew()
+	if err == nil {
+		headerBar.SetShowCloseButton(true)
+		headerBar.SetTitle("Gozik")
+		win.SetTitlebar(headerBar)
+	}
+
 	mw.bindSystemTheme(gtkSettings)
 
 	obj, err = builder.GetObject("Songlist")
@@ -380,6 +388,7 @@ func (mw *MainWindow) applySystemTheme() {
 			}
 		}
 	}
+	mw.updateLyricTagColors()
 }
 
 func (mw *MainWindow) onThemeToggle() {
@@ -395,6 +404,33 @@ func (mw *MainWindow) onThemeToggle() {
 	}
 	config.SaveTheme(mw.themeMode)
 	mw.applySystemTheme()
+}
+
+func (mw *MainWindow) updateLyricTagColors() {
+	if mw.lyricTagNow == nil || mw.lyricTagSung == nil {
+		return
+	}
+
+	dark := true
+	switch mw.themeMode {
+	case "dark":
+		dark = true
+	case "light":
+		dark = false
+	case "system":
+		dark = prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)
+	default:
+		dark = prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)
+	}
+
+	if dark {
+		mw.lyricTagNow.SetProperty("foreground", "#6FE0EE")
+		mw.lyricTagSung.SetProperty("foreground", "#E8C879")
+	} else {
+		// Use visible dark cyan/teal and dark gold in light mode
+		mw.lyricTagNow.SetProperty("foreground", "#008EA0")
+		mw.lyricTagSung.SetProperty("foreground", "#C9A840")
+	}
 }
 
 func (mw *MainWindow) updateThemeButtonIcon() {
@@ -1266,7 +1302,16 @@ func (mw *MainWindow) startTicker() {
 							}
 							if targetLine != mw.currentLyricLine {
 								mw.currentLyricLine = targetLine
-								mw.lyricsView.ScrollToIter(lineStart, 0.0, true, 0.0, 0.5)
+								glib.IdleAdd(func() bool {
+									b, _ := mw.lyricsView.GetBuffer()
+									if b != nil {
+										iter := b.GetIterAtLine(targetLine)
+										mark := b.CreateMark("", iter, true)
+										mw.lyricsView.ScrollToMark(mark, 0.0, true, 0.0, 0.5)
+										b.DeleteMark(mark)
+									}
+									return false
+								})
 							}
 						}
 					}
@@ -1434,11 +1479,15 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 			if b != nil {
 				b.SetText(displayText)
 				if mw.lyricTagNow == nil {
-					mw.lyricTagNow = b.CreateTag("now", map[string]interface{}{"foreground": "#6FE0EE"})
+					mw.lyricTagNow = b.CreateTag("now", map[string]interface{}{
+						"foreground": "#6FE0EE",
+						"weight":     pango.WEIGHT_BOLD,
+					})
 				}
 				if mw.lyricTagSung == nil {
 					mw.lyricTagSung = b.CreateTag("sung", map[string]interface{}{"foreground": "#E8C879"})
 				}
+				mw.updateLyricTagColors()
 			}
 			mw.syncedLyrics = synced
 			mw.currentLyricLine = -1
@@ -1451,6 +1500,12 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 	if song.IsCD {
 		return
 	}
+	// Immediately clear the album cover before loading new metadata
+	glib.IdleAdd(func() bool {
+		mw.setAlbumCover(nil)
+		return false
+	})
+
 	go func() {
 		// 1. Try metadata first (artist/album/title + embedded cover)
 		if song.Artist == "" || song.Album == "" || song.Title == "" || len(song.CoverData) == 0 {
@@ -1555,7 +1610,11 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 }
 
 func (mw *MainWindow) setAlbumCover(data []byte) {
-	if mw.albumCover == nil || len(data) == 0 {
+	if mw.albumCover == nil {
+		return
+	}
+	if len(data) == 0 {
+		mw.albumCover.Clear()
 		return
 	}
 	loader, err := gdk.PixbufLoaderNew()

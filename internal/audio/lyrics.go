@@ -24,7 +24,7 @@ type lrclibResult struct {
 	TrackName    string `json:"trackName"`
 	ArtistName   string `json:"artistName"`
 	AlbumName    string `json:"albumName"`
-	Duration     int    `json:"duration"`
+	Duration     float64 `json:"duration"`
 	Instrumental bool   `json:"instrumental"`
 	PlainLyrics  string `json:"plainLyrics"`
 	SyncedLyrics string `json:"syncedLyrics"`
@@ -99,11 +99,11 @@ func SearchLyrics(title, artist, album string, durationSec int) (string, error) 
 	if best.Instrumental {
 		return "(Instrumental)", nil
 	}
+	if best.SyncedLyrics != "" {
+		return best.SyncedLyrics, nil
+	}
 	if best.PlainLyrics != "" {
 		return best.PlainLyrics, nil
-	}
-	if best.SyncedLyrics != "" {
-		return stripSyncTags(best.SyncedLyrics), nil
 	}
 	return "", fmt.Errorf("empty lyrics in result")
 }
@@ -136,11 +136,11 @@ func fetchSingleLyrics(reqURL string) (string, error) {
 	if result.Instrumental {
 		return "(Instrumental)", nil
 	}
+	if result.SyncedLyrics != "" {
+		return result.SyncedLyrics, nil
+	}
 	if result.PlainLyrics != "" {
 		return result.PlainLyrics, nil
-	}
-	if result.SyncedLyrics != "" {
-		return stripSyncTags(result.SyncedLyrics), nil
 	}
 	return "", fmt.Errorf("empty lyrics")
 }
@@ -184,7 +184,7 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 				}
 			}
 			if queryDuration > 0 && r.Duration > 0 {
-				diff := queryDuration - r.Duration
+				diff := queryDuration - int(r.Duration)
 				if diff < 0 {
 					diff = -diff
 				}
@@ -253,7 +253,7 @@ func pickBestResult(results []lrclibResult, queryTitle, queryArtist, queryAlbum 
 
 		// Duration proximity (critical for blues/jazz alternate takes)
 		if queryDuration > 0 && r.Duration > 0 {
-			diff := queryDuration - r.Duration
+			diff := queryDuration - int(r.Duration)
 			if diff < 0 {
 				diff = -diff
 			}

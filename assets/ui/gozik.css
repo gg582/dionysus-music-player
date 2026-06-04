@@ -562,3 +562,32 @@ window.theme-light button.btn-primary:hover { background-color: rgba(95,211,224,
 /* playing row cyan title + gold pulse */
 window.theme-light list row.playing #row-title { color: #008EA0; }
 window.theme-light list row.playing #row-lead { color: #C9A840; }
+
+/* ---------- custom headerbar for CSD ---------- */
+headerbar {
+  background-color: @abyss0;
+  background-image: none;
+  border-bottom: 1px solid rgba(95,211,224,0.12);
+  padding: 6px 12px;
+}
+headerbar .title {
+  color: @text1;
+  font-weight: bold;
+  font-size: 14px;
+}
+headerbar .subtitle {
+  color: @text2;
+  font-size: 11px;
+}
+
+window.theme-light headerbar {
+  background-color: #E6EAF2;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+window.theme-light headerbar .title {
+  color: #1A1D26;
+}
+window.theme-light headerbar .subtitle {
+  color: #5A6270;
+}
+
