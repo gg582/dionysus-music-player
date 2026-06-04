@@ -56,3 +56,76 @@ func TestValidateRawPCMSize(t *testing.T) {
 		t.Fatalf("non-raw file: %v", err)
 	}
 }
+
+func TestParseDurationFromFilename(t *testing.T) {
+	tests := []struct {
+		name string
+		want float64
+	}{
+		{"track_[03m45s].pcm", 225},
+		{"audio_[225s].raw", 225},
+	}
+
+	for _, tt := range tests {
+		got, ok := ParseDuration(tt.name)
+		if !ok {
+			t.Fatalf("ParseDuration(%q) did not find duration", tt.name)
+		}
+		if got != tt.want {
+			t.Fatalf("ParseDuration(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestParseDurationFromCueFallback(t *testing.T) {
+	dir := t.TempDir()
+	rawPath := filepath.Join(dir, "album.raw")
+	cuePath := filepath.Join(dir, "album.cue")
+	cueData := `FILE "album.raw" BINARY
+  TRACK 01 AUDIO
+    INDEX 01 00:00:00
+  TRACK 02 AUDIO
+    INDEX 01 03:45:00
+`
+
+	if err := os.WriteFile(rawPath, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cuePath, []byte(cueData), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := ParseDuration(rawPath)
+	if !ok {
+		t.Fatal("ParseDuration() did not find cue duration")
+	}
+	if got != 225 {
+		t.Fatalf("ParseDuration() = %v, want 225", got)
+	}
+}
+
+func TestDetectPcmFormat(t *testing.T) {
+	tests := []struct {
+		name string
+		size int
+		want string
+	}{
+		{"tone_[1s].pcm", 44100 * 2 * 2, "s16le"},
+		{"tone_[1s].raw", 44100 * 2 * 3, "s24le"},
+		{"tone_[1s].pcm", 44100 * 2 * 4, "s32le"},
+	}
+
+	for _, tt := range tests {
+		path := filepath.Join(t.TempDir(), tt.name)
+		if err := os.WriteFile(path, make([]byte, tt.size), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := DetectPcmFormat(path)
+		if err != nil {
+			t.Fatalf("DetectPcmFormat(%q) error = %v", tt.name, err)
+		}
+		if got != tt.want {
+			t.Fatalf("DetectPcmFormat(%q) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

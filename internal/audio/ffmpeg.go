@@ -24,14 +24,8 @@ func validateRawPCMSize(path string) error {
 	if !isRawPCM(path) {
 		return nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if info.Size()%4 != 0 {
-		return fmt.Errorf("raw pcm file size %d is not a multiple of 4 bytes", info.Size())
-	}
-	return nil
+	_, err := DetectPcmFormat(path)
+	return err
 }
 
 func decodeFFmpeg(path string) (beep.StreamSeekCloser, beep.Format, error) {
@@ -64,7 +58,12 @@ func decodeFFmpegSegment(path string, startSec, endSec int) (beep.StreamSeekClos
 		args = append(args, "-t", fmt.Sprintf("%d", endSec-startSec))
 	}
 	if isRawPCM(path) {
-		args = append(args, "-f", "s16le", "-ar", "44100", "-ac", "2")
+		pcmFormat, err := DetectPcmFormat(path)
+		if err != nil {
+			os.Remove(tmpPath)
+			return nil, beep.Format{}, err
+		}
+		args = append(args, "-f", pcmFormat, "-ar", "44100", "-ac", "2")
 	}
 	args = append(args,
 		"-i", path,

@@ -48,8 +48,8 @@ type Player struct {
 	currentDevice string
 	currentTrack  int
 	isCD          bool
-	currentStart  int // seconds
-	currentEnd    int // seconds
+	currentStart  int     // seconds
+	currentEnd    int     // seconds
 	replayGain    float64 // log2-scaled gain correction
 }
 
@@ -149,10 +149,23 @@ func ProbeDuration(filename string) (time.Duration, error) {
 	case "aiff", "aif":
 		streamer, format, err = decodeAIFF(f)
 	case "pcm", "raw":
-		if err := validateRawPCMSize(filename); err != nil {
-			return 0, err
+		pcmFormat, detectErr := DetectPcmFormat(filename)
+		if detectErr != nil {
+			f.Close()
+			return 0, detectErr
 		}
-		streamer, format, err = decodePCM(f)
+		info, statErr := f.Stat()
+		if statErr != nil {
+			f.Close()
+			return 0, statErr
+		}
+		frameSize, frameErr := rawPCMFrameSize(pcmFormat)
+		if frameErr != nil {
+			f.Close()
+			return 0, frameErr
+		}
+		f.Close()
+		return time.Second * time.Duration(info.Size()/int64(frameSize)) / rawPCMSampleRate, nil
 	default:
 		f.Close()
 		return 0, fmt.Errorf("unsupported format: %s", ext)
@@ -213,12 +226,8 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 			streamer, format, err = decodeAIFF(f)
 			useSegment = true
 		case "pcm", "raw":
-			if err := validateRawPCMSize(filename); err != nil {
-				f.Close()
-				return err
-			}
-			streamer, format, err = decodePCM(f)
-			useSegment = true
+			f.Close()
+			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
 		default:
 			f.Close()
 			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
