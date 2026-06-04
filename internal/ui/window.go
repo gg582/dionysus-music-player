@@ -471,10 +471,10 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"Stop":      mw.onStop,
 		"Stop1":     mw.onPrev,
 		"Stop2":     mw.onNext,
-		"BtnOpen":    mw.onFileOpen,
-		"BtnOpenCD":  mw.onOpenCD,
-		"BtnRemove":  mw.removeSelectedSong,
-		"BtnTheme":   mw.onThemeToggle,
+		"BtnOpen":   mw.onFileOpen,
+		"BtnOpenCD": mw.onOpenCD,
+		"BtnRemove": mw.removeSelectedSong,
+		"BtnTheme":  mw.onThemeToggle,
 	}
 
 	for id, handler := range buttons {
@@ -1201,9 +1201,9 @@ func (mw *MainWindow) startTicker() {
 					length := mw.player.Length()
 					if mw.timeLabel != nil {
 						mw.timeLabel.SetText(formatDuration(int(pos.Seconds())))
-							if mw.totalTimeLabel != nil {
-								mw.totalTimeLabel.SetText(formatDuration(int(length.Seconds())))
-							}
+						if mw.totalTimeLabel != nil {
+							mw.totalTimeLabel.SetText(formatDuration(int(length.Seconds())))
+						}
 					}
 					if mw.progressBar != nil && length > 0 && !mw.seeking {
 						pct := float64(pos) / float64(length) * 10000.0
@@ -1667,7 +1667,7 @@ func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscReleas
 
 func isSupported(ext string) bool {
 	switch ext {
-	case "mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "m3u", "m3u8", "cue", "pls", "xspf":
+	case "mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "mod", "s3m", "xm", "it", "m3u", "m3u8", "cue", "pls", "xspf":
 		return true
 	}
 	return false

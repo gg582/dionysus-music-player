@@ -146,6 +146,8 @@ func ProbeDuration(filename string) (time.Duration, error) {
 		streamer, format, err = vorbis.Decode(f)
 	case "opus":
 		streamer, format, err = decodeOpus(f)
+	case "aac":
+		streamer, format, err = decodeADTS(f)
 	case "aiff", "aif":
 		streamer, format, err = decodeAIFF(f)
 	case "pcm", "raw":
@@ -167,6 +169,11 @@ func ProbeDuration(filename string) (time.Duration, error) {
 		f.Close()
 		return time.Second * time.Duration(info.Size()/int64(frameSize)) / rawPCMSampleRate, nil
 	default:
+		if _, ok := gaudioFormatForExt(ext); ok {
+			f.Close()
+			streamer, format, err = decodeGaudioExt(filename, ext)
+			break
+		}
 		f.Close()
 		return 0, fmt.Errorf("unsupported format: %s", ext)
 	}
@@ -222,6 +229,9 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 		case "opus":
 			streamer, format, err = decodeOpus(f)
 			useSegment = true
+		case "aac":
+			streamer, format, err = decodeADTS(f)
+			useSegment = true
 		case "aiff", "aif":
 			streamer, format, err = decodeAIFF(f)
 			useSegment = true
@@ -229,6 +239,12 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 			f.Close()
 			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
 		default:
+			if _, ok := gaudioFormatForExt(ext); ok {
+				f.Close()
+				streamer, format, err = decodeGaudioExt(filename, ext)
+				useSegment = true
+				break
+			}
 			f.Close()
 			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
 		}

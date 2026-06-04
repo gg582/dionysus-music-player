@@ -99,7 +99,7 @@ jobs:
                 "name": "gozik",
                 "buildsystem": "simple",
                 "build-commands": [
-                  "curl -sL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o go.tar.gz",
+                  "curl -sL https://go.dev/dl/go1.25.6.linux-amd64.tar.gz -o go.tar.gz",
                   "tar -C /tmp -xzf go.tar.gz",
                   "export PATH=/tmp/go/bin:$PATH",
                   "export CGO_ENABLED=1",
@@ -145,7 +145,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.25.6'
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -195,11 +195,11 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.25.6'
 
       - name: Install dependencies
         run: |
-          brew install gtk+3 opus opusfile create-dmg
+          brew install gtk+3 pkg-config opus opusfile create-dmg
 
       - name: Build gozik
         run: |

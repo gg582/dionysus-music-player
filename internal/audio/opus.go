@@ -1,99 +1,55 @@
 package audio
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/gopxl/beep"
-	"github.com/kazzmir/opus"
-	"github.com/pkg/errors"
+	"github.com/pion/opus"
+	"github.com/pion/opus/pkg/oggreader"
 )
 
-// decodeOpus takes a ReadSeekCloser containing Opus audio data and returns a
-// beep StreamSeekCloser.  The caller must not close the supplied reader; use
-// the returned StreamSeekCloser's Close method instead.
+const opusSampleRate = 48000
+const opusChannels = 2
+const opusMaxFrameSamples = 5760
+
 func decodeOpus(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
-	d, err := opus.NewDecoder(rsc)
+	ogg, _, err := oggreader.NewWith(rsc)
 	if err != nil {
+		rsc.Close()
 		return nil, beep.Format{}, fmt.Errorf("opus: %w", err)
 	}
-	if d.ChannelCount() > 2 {
-		return nil, beep.Format{}, fmt.Errorf("opus: unsupported number of channels, %d", d.ChannelCount())
-	}
 
-	return &opusDecoder{
-		rsc:     rsc,
-		decoder: d,
-	}, beep.Format{
-		SampleRate:  beep.SampleRate(opus.SampleRate),
-		NumChannels: d.ChannelCount(),
-		Precision:   2,
-	}, nil
-}
-
-type opusDecoder struct {
-	rsc     io.ReadSeekCloser
-	decoder *opus.Decoder
-	err     error
-}
-
-func (d *opusDecoder) Stream(samples [][2]float64) (int, bool) {
-	if d.err != nil {
-		return 0, false
-	}
-
-	tmp := make([]float32, len(samples)*d.decoder.ChannelCount())
-	n, err := d.decoder.ReadFloat(tmp)
+	decoder, err := opus.NewDecoderWithOutput(opusSampleRate, opusChannels)
 	if err != nil {
-		if err == io.EOF {
-			return n, n > 0
+		rsc.Close()
+		return nil, beep.Format{}, fmt.Errorf("opus: %w", err)
+	}
+
+	var decoded []float32
+	pcm := make([]float32, opusMaxFrameSamples*opusChannels)
+	for {
+		packet, _, err := ogg.ParseNextPacket()
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		d.err = errors.Wrap(err, "opus")
-		return n, false
-	}
-
-	if d.decoder.ChannelCount() == 1 {
-		for i := 0; i < n; i++ {
-			samples[i][0] = float64(tmp[i])
-			samples[i][1] = float64(tmp[i])
+		if err != nil {
+			rsc.Close()
+			return nil, beep.Format{}, fmt.Errorf("opus: %w", err)
 		}
-	} else {
-		for i := 0; i < n; i++ {
-			samples[i][0] = float64(tmp[i*2])
-			samples[i][1] = float64(tmp[i*2+1])
+		if bytes.HasPrefix(packet, []byte("OpusTags")) {
+			continue
 		}
+
+		n, err := decoder.DecodeToFloat32(packet, pcm)
+		if err != nil {
+			rsc.Close()
+			return nil, beep.Format{}, fmt.Errorf("opus: %w", err)
+		}
+		decoded = append(decoded, pcm[:n*opusChannels]...)
 	}
 
-	return n, true
-}
-
-func (d *opusDecoder) Err() error {
-	return d.err
-}
-
-func (d *opusDecoder) Len() int {
-	return int(d.decoder.Len())
-}
-
-func (d *opusDecoder) Position() int {
-	pos, err := d.decoder.Position()
-	if err != nil {
-		d.err = errors.Wrap(err, "opus")
-	}
-	return int(pos)
-}
-
-func (d *opusDecoder) Seek(p int) error {
-	if p < 0 || d.Len() < p {
-		return fmt.Errorf("opus: seek position %v out of range [%v, %v]", p, 0, d.Len())
-	}
-	if err := d.decoder.Seek(int64(p)); err != nil {
-		return errors.Wrap(err, "opus")
-	}
-	return nil
-}
-
-func (d *opusDecoder) Close() error {
-	d.decoder.Destroy()
-	return d.rsc.Close()
+	return newFloat32Streamer(decoded, opusChannels, opusSampleRate, rsc.Close)
 }
