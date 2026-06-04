@@ -77,51 +77,49 @@ jobs:
 
 
   build-windows:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
+            runs-on: windows-latest
             msystem: MINGW64
+            mingw-prefix: mingw64
             output: gozik-windows-amd64.exe
+            msys2-packages: >-
+              mingw-w64-x86_64-toolchain
+              mingw-w64-x86_64-gtk3
+              mingw-w64-x86_64-opusfile
+              mingw-w64-x86_64-pkg-config
           - arch: arm64
+            runs-on: windows-11-arm
+            msystem: CLANGARM64
+            mingw-prefix: clangarm64
             output: gozik-windows-arm64.exe
+            msys2-packages: >-
+              mingw-w64-clang-aarch64-toolchain
+              mingw-w64-clang-aarch64-gtk3
+              mingw-w64-clang-aarch64-opusfile
+              mingw-w64-clang-aarch64-pkg-config
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.6'
       - name: Setup MSYS2
-        if: matrix.arch == 'amd64'
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
           update: true
           path-type: inherit
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-gtk3
-            mingw-w64-x86_64-opusfile
-            mingw-w64-x86_64-pkg-config
-      - name: Build amd64
-        if: matrix.arch == 'amd64'
+          install: ${{ matrix.msys2-packages }}
+      - name: Build
         shell: msys2 {0}
         run: |
-          export PATH="/mingw64/bin:$PATH"
-          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
-      - name: Build arm64 (experimental)
-        if: matrix.arch == 'arm64'
-        continue-on-error: true
-        run: |
-          Write-Host "Windows/arm64 cross-compile with CGO is experimental"
-          choco install llvm
-          $env:CC = "clang"
-          $env:GOARCH = "arm64"
-          $env:CGO_ENABLED = "1"
+          export PATH="/${{ matrix.mingw-prefix }}/bin:$PATH"
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - uses: actions/upload-artifact@v4
-        if: matrix.arch == 'amd64' || success()
         with:
           name: ${{ matrix.output }}
           path: ${{ matrix.output }}
