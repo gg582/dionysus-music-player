@@ -117,6 +117,19 @@ jobs:
           cache: false
           path-type: inherit
           install: ${{ matrix.msys2-packages }}
+      - name: Patch gotk3 for Windows ARM64
+        if: matrix.arch == 'arm64'
+        shell: msys2 {0}
+        run: |
+          go mod download github.com/gotk3/gotk3
+          GOTK3_VERSION=$(grep 'github.com/gotk3/gotk3' go.mod | awk '{print $2}')
+          GOMODCACHE=$(cygpath -u "$(go env GOMODCACHE)")
+          GOTK3_GLIB="${GOMODCACHE}/github.com/gotk3/gotk3@${GOTK3_VERSION}/glib/glib.go.h"
+          if [ -f "$GOTK3_GLIB" ]; then
+            sed -i 's/^extern void /extern __declspec(dllexport) void /' "$GOTK3_GLIB"
+            sed -i 's/^extern gboolean /extern __declspec(dllexport) gboolean /' "$GOTK3_GLIB"
+            sed -i 's/^extern gint /extern __declspec(dllexport) gint /' "$GOTK3_GLIB"
+          fi
       - name: Build
         shell: msys2 {0}
         run: |
