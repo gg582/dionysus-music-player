@@ -7,154 +7,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-linux-flatpak:
+  build-linux-appimage:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-46
-      options: --privileged
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute dependency checksums
-        id: hashes
-        run: |
-          set -e
-          curl -sL -o /tmp/opus.tar.gz https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
-          echo "opus_sha256=$(sha256sum /tmp/opus.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-          curl -sL -o /tmp/opusfile.tar.gz https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz
-          echo "opusfile_sha256=$(sha256sum /tmp/opusfile.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-          curl -sL -o /tmp/ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          echo "ffmpeg_sha256=$(sha256sum /tmp/ffmpeg.tar.xz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-          curl -sL -o /tmp/go.tar.gz https://go.dev/dl/go1.25.6.linux-amd64.tar.gz
-          echo "go_sha256=$(sha256sum /tmp/go.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-
-      - name: Generate Flatpak manifest
-        run: |
-          cat > com.gosuda.gozik.player.json <<'MANIFEST'
-          {
-            "app-id": "com.gosuda.gozik.player",
-            "runtime": "org.gnome.Platform",
-            "runtime-version": "46",
-            "sdk": "org.gnome.Sdk",
-            "command": "gozik",
-            "finish-args": [
-              "--socket=wayland",
-              "--socket=fallback-x11",
-              "--share=ipc",
-              "--share=network",
-              "--device=dri",
-              "--socket=pulseaudio",
-              "--filesystem=home",
-              "--talk-name=org.freedesktop.Notifications",
-              "--own-name=com.gosuda.gozik.player"
-            ],
-            "modules": [
-              {
-                "name": "opus",
-                "buildsystem": "autotools",
-                "config-opts": [
-                  "--disable-shared",
-                  "--enable-static",
-                  "--disable-doc",
-                  "--disable-extra-programs"
-                ],
-                "sources": [
-                  {
-                    "type": "archive",
-                    "url": "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz",
-                    "sha256": "OPUS_SHA256"
-                  }
-                ]
-              },
-              {
-                "name": "opusfile",
-                "buildsystem": "autotools",
-                "config-opts": [
-                  "--disable-shared",
-                  "--enable-static",
-                  "--disable-doc",
-                  "--disable-examples"
-                ],
-                "sources": [
-                  {
-                    "type": "archive",
-                    "url": "https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz",
-                    "sha256": "OPUSFILE_SHA256"
-                  }
-                ]
-              },
-              {
-                "name": "ffmpeg-static",
-                "buildsystem": "simple",
-                "build-commands": [
-                  "install -Dm755 ffmpeg /app/bin/ffmpeg"
-                ],
-                "sources": [
-                  {
-                    "type": "archive",
-                    "url": "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz",
-                    "sha256": "FFMPEG_SHA256",
-                    "strip-components": 1
-                  }
-                ]
-              },
-              {
-                "name": "golang",
-                "buildsystem": "simple",
-                "build-commands": [
-                  "install -d /app/lib",
-                  "cp -a go /app/lib/go"
-                ],
-                "sources": [
-                  {
-                    "type": "archive",
-                    "url": "https://go.dev/dl/go1.25.6.linux-amd64.tar.gz",
-                    "sha256": "GO_SHA256"
-                  }
-                ]
-              },
-              {
-                "name": "gozik",
-                "buildsystem": "simple",
-                "build-commands": [
-                  "export PATH=/app/lib/go/bin:$PATH && export GOROOT=/app/lib/go && export CGO_ENABLED=1 && go build -ldflags='-s -w -X github.com/gg582/gozik/internal/config.Prefix=/app' -o /app/bin/gozik ./cmd/gozik",
-                  "install -Dm644 assets/ui/gozik-main-window.glade /app/share/gozik/ui/gozik-main-window.glade",
-                  "install -Dm644 assets/ui/gozik.css /app/share/gozik/ui/gozik.css",
-                  "install -Dm644 assets/ui/stars.png /app/share/gozik/ui/stars.png",
-                  "install -Dm644 assets/ui/cosmos.css /app/share/gozik/ui/cosmos.css",
-                  "install -Dm644 assets/gozik.desktop /app/share/applications/com.gosuda.gozik.player.desktop",
-                  "install -Dm644 assets/ui/hi-res/icon.png /app/share/icons/hicolor/512x512/apps/com.gosuda.gozik.player.png"
-                ],
-                "sources": [
-                  {
-                    "type": "dir",
-                    "path": "."
-                  }
-                ]
-              }
-            ]
-          }
-          MANIFEST
-          sed -i "s/OPUS_SHA256/${{ steps.hashes.outputs.opus_sha256 }}/g" com.gosuda.gozik.player.json
-          sed -i "s/OPUSFILE_SHA256/${{ steps.hashes.outputs.opusfile_sha256 }}/g" com.gosuda.gozik.player.json
-          sed -i "s/FFMPEG_SHA256/${{ steps.hashes.outputs.ffmpeg_sha256 }}/g" com.gosuda.gozik.player.json
-          sed -i "s/GO_SHA256/${{ steps.hashes.outputs.go_sha256 }}/g" com.gosuda.gozik.player.json
-
-      - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - uses: actions/setup-go@v5
         with:
-          bundle: gozik-linux-amd64.flatpak
-          manifest-path: com.gosuda.gozik.player.json
-          cache-key: flatpak-${{ github.sha }}
-          build-bundle: true
+          go-version: '1.25.6'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libopusfile-dev libasound2-dev squashfs-tools binutils-multiarch
+
+      - name: Build AppImage
+        run: |
+          ./build_appimage.sh amd64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gozik-linux-amd64-flatpak
-          path: gozik-linux-amd64.flatpak
+          name: gozik-linux-amd64-appimage
+          path: dist/gozik-amd64.AppImage
 
   build-windows:
     runs-on: windows-latest
@@ -349,7 +223,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux-flatpak, build-windows, build-macos, build-linux-niche]
+    needs: [build-linux-appimage, build-windows, build-macos, build-linux-niche]
     permissions:
       contents: write
     steps:
