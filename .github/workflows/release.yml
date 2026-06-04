@@ -281,25 +281,49 @@ jobs:
         include:
           - platform: linux/arm64
             output: gozik-linux-arm64
+            arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            cc-target: aarch64-linux-gnu
           - platform: linux/riscv64
             output: gozik-linux-riscv64
+            arch: riscv64
+            cc: riscv64-linux-gnu-gcc
+            cc-target: riscv64-linux-gnu
     steps:
       - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Build in container
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.6'
+      - name: Install cross dependencies (${{ matrix.arch }})
         run: |
-          docker run --rm --platform ${{ matrix.platform }} \
-            -v "${{ github.workspace }}:/workspace" -w /workspace \
-            ubuntu:24.04 bash -c "
-              set -e
-              apt-get update
-              apt-get install -y golang-go git gcc libc6-dev libgtk-3-dev libopusfile-dev libasound2-dev ca-certificates
-              export PATH=\$PATH:\$(go env GOPATH)/bin
-              go install golang.org/dl/go1.25.6@latest
-              go1.25.6 download
-              go1.25.6 build -buildvcs=false -ldflags='-s -w' -o ${{ matrix.output }} ./cmd/gozik
-            "
+          sudo dpkg --add-architecture ${{ matrix.arch }}
+          CODENAME=$(lsb_release -c -s)
+          sudo mv /etc/apt/sources.list /etc/apt/sources.list.bak || true
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.bak || true
+          fi
+          cat <<EOF | sudo tee /etc/apt/sources.list
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME} main restricted universe multiverse
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-updates main restricted universe multiverse
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-backports main restricted universe multiverse
+          deb [arch=amd64] http://security.ubuntu.com/ubuntu/ ${CODENAME}-security main restricted universe multiverse
+
+          deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports/ ${CODENAME} main restricted universe multiverse
+          deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports/ ${CODENAME}-updates main restricted universe multiverse
+          deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports/ ${CODENAME}-backports main restricted universe multiverse
+          deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports/ ${CODENAME}-security main restricted universe multiverse
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y gcc-${{ matrix.cc-target }} libgtk-3-dev:${{ matrix.arch }} libopusfile-dev:${{ matrix.arch }} libasound2-dev:${{ matrix.arch }}
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          CC: ${{ matrix.cc }}
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.cc-target }}/pkgconfig:/usr/share/pkgconfig
+        run: |
+          go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output }}
