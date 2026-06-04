@@ -115,14 +115,20 @@ if [ "$ARCH" = "riscv64" ]; then
     done
   fi
 else
-  # amd64 / arm64: use johnvansickle static builds
-  FFMPEG_TAR="${BUILD_DIR}/ffmpeg-${FFMPEG_ARCH}-static.tar.xz"
-  if [ ! -f "$FFMPEG_TAR" ]; then
-    curl -sL -o "$FFMPEG_TAR" \
-      "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${FFMPEG_ARCH}-static.tar.xz"
+  # Prefer distro ffmpeg when available. It avoids relying on external
+  # static-build mirrors during release CI, and its shared libs are bundled
+  # below through readelf dependency scanning.
+  if command -v ffmpeg >/dev/null 2>&1; then
+    cp -L "$(command -v ffmpeg)" "${APPDIR}/usr/bin/ffmpeg"
+  else
+    FFMPEG_TAR="${BUILD_DIR}/ffmpeg-${FFMPEG_ARCH}-static.tar.xz"
+    if [ ! -f "$FFMPEG_TAR" ]; then
+      curl -fL -o "$FFMPEG_TAR" \
+        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${FFMPEG_ARCH}-static.tar.xz"
+    fi
+    tar -xJf "$FFMPEG_TAR" -C "$BUILD_DIR" --strip-components=1
+    cp -L "${BUILD_DIR}/ffmpeg" "${APPDIR}/usr/bin/ffmpeg"
   fi
-  tar -xJf "$FFMPEG_TAR" -C "$BUILD_DIR" --strip-components=1
-  cp -L "${BUILD_DIR}/ffmpeg" "${APPDIR}/usr/bin/ffmpeg"
   chmod +x "${APPDIR}/usr/bin/ffmpeg"
 fi
 

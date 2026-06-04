@@ -123,6 +123,7 @@ jobs:
           export PATH="/${{ matrix.mingw-prefix }}/bin:$PATH"
           export CC="${{ matrix.cc }}"
           export CGO_ENABLED=1
+          export CGO_CFLAGS="-Wno-dll-attribute-on-redeclaration"
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - uses: actions/upload-artifact@v4
         with:
