@@ -23,7 +23,7 @@ require (
 
 require (
 	github.com/ebitengine/purego v0.9.1 // indirect
-	github.com/gotracker/goaudiofile v1.0.14 // indirect
+	github.com/gotracker/goaudiofile v1.0.16 // indirect
 	github.com/gotracker/gomixing v1.3.0 // indirect
 	github.com/gotracker/opl2 v1.0.1 // indirect
 	github.com/gotracker/playback v0.2.7 // indirect
