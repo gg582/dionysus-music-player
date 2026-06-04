@@ -16,7 +16,7 @@ A simple desktop music player for Linux. It plays local audio files and audio CD
 - WMA
 - M4A / AAC / ALAC
 - APE, WavPack, TTA, Musepack, AC3, DTS, AMR, RealAudio, CAF, AU, VOC, DSF/DFF, and other FFmpeg-readable audio files
-- Raw PCM (`.raw`, `.pcm`) 16-bit stereo, little-endian, 44100 Hz, with size validation
+- Raw PCM (`.raw`, `.pcm`) with heuristic dynamic bit-depth detection (16/24/32-bit signed little-endian, stereo, 44100 Hz) via filename or CUE-sheet duration hints
 
 **Playlists**
 
