@@ -9,6 +9,9 @@ on:
 jobs:
   build-linux-flatpak:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-46
+      options: --privileged
     steps:
       - uses: actions/checkout@v4
 
@@ -155,7 +158,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-gtk3
-            mingw-w64-x86_64-libopus
+            mingw-w64-x86_64-opus
             mingw-w64-x86_64-opusfile
             mingw-w64-x86_64-pkg-config
 
