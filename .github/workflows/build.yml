@@ -114,9 +114,6 @@ jobs:
           - os: macos-latest
             arch: arm64
             output: gozik-darwin-arm64
-          - os: macos-13
-            arch: amd64
-            output: gozik-darwin-amd64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
