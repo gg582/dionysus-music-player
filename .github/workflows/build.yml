@@ -49,7 +49,7 @@ jobs:
               export PATH=\$PATH:\$(go env GOPATH)/bin
               go install golang.org/dl/go1.25.6@latest
               go1.25.6 download
-              go1.25.6 build -ldflags='-s -w' -o ${{ matrix.output }} ./cmd/gozik
+              go1.25.6 build -buildvcs=false -ldflags='-s -w' -o ${{ matrix.output }} ./cmd/gozik
             "
       - uses: actions/upload-artifact@v4
         with:
