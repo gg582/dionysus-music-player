@@ -189,9 +189,9 @@ for _ in {1..4}; do
 done
 
 # ---------------------------------------------------------------------------
-# 4. Desktop entry and icon
+# 4. Desktop entry, icon and UI assets
 # ---------------------------------------------------------------------------
-echo "[4/7] Setting up desktop entry and icon..."
+echo "[4/7] Setting up desktop entry, icon and UI assets..."
 cp "${PROJECT_ROOT}/assets/gozik.desktop" "${APPDIR}/usr/share/applications/"
 cp "${PROJECT_ROOT}/gozik.png" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/"
 ln -sf usr/share/applications/gozik.desktop "${APPDIR}/gozik.desktop" || true
@@ -199,6 +199,10 @@ ln -sf usr/share/icons/hicolor/256x256/apps/gozik.png "${APPDIR}/gozik.png" || t
 
 # Ensure Exec points to the bundled binary
 sed -i 's|^Exec=.*|Exec=gozik|' "${APPDIR}/usr/share/applications/gozik.desktop"
+
+# Bundle UI assets so the binary can find them inside the AppImage
+mkdir -p "${APPDIR}/usr/share/gozik/ui"
+cp -r "${PROJECT_ROOT}/assets/ui/"* "${APPDIR}/usr/share/gozik/ui/"
 
 # ---------------------------------------------------------------------------
 # 5. AppRun launcher
@@ -209,6 +213,7 @@ cat > "${APPDIR}/AppRun" <<'EOF'
 HERE="$(dirname "$(readlink -f "${0}")")"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
 export PATH="${HERE}/usr/bin:${PATH:-}"
+export GOZIK_ASSETS="${HERE}/usr/share/gozik"
 exec "${HERE}/usr/bin/gozik" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
