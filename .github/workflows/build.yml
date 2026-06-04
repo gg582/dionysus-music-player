@@ -86,6 +86,7 @@ jobs:
             runs-on: windows-latest
             msystem: MINGW64
             mingw-prefix: mingw64
+            cc: gcc
             output: gozik-windows-amd64.exe
             msys2-packages: >-
               mingw-w64-x86_64-toolchain
@@ -96,6 +97,7 @@ jobs:
             runs-on: windows-11-arm
             msystem: CLANGARM64
             mingw-prefix: clangarm64
+            cc: clang
             output: gozik-windows-arm64.exe
             msys2-packages: >-
               mingw-w64-clang-aarch64-toolchain
@@ -119,6 +121,8 @@ jobs:
         shell: msys2 {0}
         run: |
           export PATH="/${{ matrix.mingw-prefix }}/bin:$PATH"
+          export CC="${{ matrix.cc }}"
+          export CGO_ENABLED=1
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - uses: actions/upload-artifact@v4
         with:
