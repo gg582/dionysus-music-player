@@ -15,11 +15,33 @@ import (
 
 const ffmpegFallbackSampleRate = beep.SampleRate(48000)
 
+func isRawPCM(path string) bool {
+	p := strings.ToLower(path)
+	return strings.HasSuffix(p, ".raw") || strings.HasSuffix(p, ".pcm")
+}
+
+func validateRawPCMSize(path string) error {
+	if !isRawPCM(path) {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.Size()%4 != 0 {
+		return fmt.Errorf("raw pcm file size %d is not a multiple of 4 bytes", info.Size())
+	}
+	return nil
+}
+
 func decodeFFmpeg(path string) (beep.StreamSeekCloser, beep.Format, error) {
 	return decodeFFmpegSegment(path, 0, 0)
 }
 
 func decodeFFmpegSegment(path string, startSec, endSec int) (beep.StreamSeekCloser, beep.Format, error) {
+	if err := validateRawPCMSize(path); err != nil {
+		return nil, beep.Format{}, err
+	}
 	tmp, err := os.CreateTemp("", "gozik-ffmpeg-*.pcm")
 	if err != nil {
 		return nil, beep.Format{}, err
@@ -40,6 +62,9 @@ func decodeFFmpegSegment(path string, startSec, endSec int) (beep.StreamSeekClos
 	}
 	if endSec > startSec {
 		args = append(args, "-t", fmt.Sprintf("%d", endSec-startSec))
+	}
+	if isRawPCM(path) {
+		args = append(args, "-f", "s16le", "-ar", "44100", "-ac", "2")
 	}
 	args = append(args,
 		"-i", path,

@@ -26,7 +26,7 @@ func decodePCMWithFormat(r io.Reader, sampleRate beep.SampleRate) (beep.StreamSe
 	}
 
 	if len(data)%4 != 0 {
-		data = data[:len(data)-(len(data)%4)]
+		return nil, beep.Format{}, fmt.Errorf("raw pcm data length %d is not a multiple of 4 bytes", len(data))
 	}
 
 	samples := make([]int16, len(data)/2)

@@ -18,12 +18,27 @@ import (
 // Prescan spawns a background analysis of path using FFmpeg CGO.
 // It returns chapter metadata and a 200-point RMS waveform.
 func Prescan(path string) (*models.Waveform, []models.Chapter, error) {
+	if err := validateRawPCMSize(path); err != nil {
+		return nil, nil, err
+	}
+
 	ctx := libavformat.AvformatAllocContext()
 	if ctx == nil {
 		return nil, nil, fmt.Errorf("avformat_alloc_context failed")
 	}
 
-	ret := libavformat.AvformatOpenInput(&ctx, path, nil, nil)
+	var fmt_ *libavformat.AVInputFormat
+	var dict *libavutil.AVDictionary
+	if isRawPCM(path) {
+		fmt_ = libavformat.AvFindInputFormat("s16le")
+		libavutil.AvDictSet(&dict, "sample_rate", "44100", 0)
+		libavutil.AvDictSet(&dict, "channels", "2", 0)
+	}
+
+	ret := libavformat.AvformatOpenInput(&ctx, path, fmt_, &dict)
+	if dict != nil {
+		libavutil.AvDictFree(&dict)
+	}
 	if ret < 0 {
 		return nil, nil, fmt.Errorf("avformat_open_input failed: %d", ret)
 	}

@@ -149,6 +149,9 @@ func ProbeDuration(filename string) (time.Duration, error) {
 	case "aiff", "aif":
 		streamer, format, err = decodeAIFF(f)
 	case "pcm", "raw":
+		if err := validateRawPCMSize(filename); err != nil {
+			return 0, err
+		}
 		streamer, format, err = decodePCM(f)
 	default:
 		f.Close()
@@ -210,6 +213,10 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 			streamer, format, err = decodeAIFF(f)
 			useSegment = true
 		case "pcm", "raw":
+			if err := validateRawPCMSize(filename); err != nil {
+				f.Close()
+				return err
+			}
 			streamer, format, err = decodePCM(f)
 			useSegment = true
 		default:

@@ -258,6 +258,10 @@ func (m *Mixer) decodePath(path string) (*TrackSlot, error) {
 		return &TrackSlot{stream: s}, nil
 	}
 
+	if err := validateRawPCMSize(path); err != nil {
+		return nil, err
+	}
+
 	s, _, err := decodeFFmpeg(path)
 	if err != nil {
 		return nil, err
