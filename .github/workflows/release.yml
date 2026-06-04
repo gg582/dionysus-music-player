@@ -102,10 +102,25 @@ jobs:
                 ]
               },
               {
+                "name": "golang",
+                "buildsystem": "simple",
+                "build-commands": [
+                  "install -d /app/lib",
+                  "cp -a go /app/lib/go"
+                ],
+                "sources": [
+                  {
+                    "type": "archive",
+                    "url": "https://go.dev/dl/go1.25.6.linux-amd64.tar.gz",
+                    "sha256": "GO_SHA256"
+                  }
+                ]
+              },
+              {
                 "name": "gozik",
                 "buildsystem": "simple",
                 "build-commands": [
-                  "export PATH=$PWD/go/bin:$PATH && export CGO_ENABLED=1 && go build -ldflags='-s -w -X github.com/gg582/gozik/internal/config.Prefix=/app' -o /app/bin/gozik ./cmd/gozik",
+                  "export PATH=/app/lib/go/bin:$PATH && export GOROOT=/app/lib/go && export CGO_ENABLED=1 && go build -ldflags='-s -w -X github.com/gg582/gozik/internal/config.Prefix=/app' -o /app/bin/gozik ./cmd/gozik",
                   "install -Dm644 assets/ui/gozik-main-window.glade /app/share/gozik/ui/gozik-main-window.glade",
                   "install -Dm644 assets/ui/gozik.css /app/share/gozik/ui/gozik.css",
                   "install -Dm644 assets/ui/stars.png /app/share/gozik/ui/stars.png",
@@ -117,11 +132,6 @@ jobs:
                   {
                     "type": "dir",
                     "path": "."
-                  },
-                  {
-                    "type": "archive",
-                    "url": "https://go.dev/dl/go1.25.6.linux-amd64.tar.gz",
-                    "sha256": "GO_SHA256"
                   }
                 ]
               }
