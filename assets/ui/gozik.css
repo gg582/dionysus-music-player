@@ -348,3 +348,217 @@ list row.playing #row-lead {
   50%  { opacity: 1; }
   100% { opacity: 0.40; }
 }
+
+/* ============================================================
+   GOZIK — Light theme overrides (window.theme-light)
+   Inverted starfield + light background + dark text
+   ============================================================ */
+
+window.theme-light {
+  color: #1A1D26;
+  background-color: #F0F2F5;
+  background-image:
+    url("stars-light.png"),
+    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.10), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.06), transparent),
+    radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.08));
+}
+
+window.theme-light label { color: #1A1D26; }
+
+/* ---------- player card ---------- */
+window.theme-light #SongPlayerWidget {
+  background-color: rgba(0,0,0,0.03);
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
+}
+
+/* ---------- album cover ---------- */
+window.theme-light #AlbumCover {
+  border: 1px solid rgba(95,211,224,0.25);
+  background-color: #E8EBF0;
+  background-image:
+    radial-gradient(farthest-side at 32% 24%, rgba(95,211,224,0.12), transparent),
+    radial-gradient(farthest-side at 72% 84%, rgba(95,211,224,0.06), transparent);
+}
+
+/* ---------- typography ---------- */
+window.theme-light #AlbumTitle  { color: #1A1D26; }
+window.theme-light #AlbumArtist { color: #5A6270; }
+window.theme-light #AlbumYear   { color: #8A93A6; }
+
+window.theme-light #Time,
+window.theme-light #TotalTime {
+  color: #5A6270;
+}
+
+/* ---------- queue header ---------- */
+window.theme-light #QueueLabel { color: #8A93A6; }
+window.theme-light #QueueCount { color: #8A93A6; }
+window.theme-light #VolumeIcon { color: #5A6270; }
+
+/* ---------- song list ---------- */
+window.theme-light #SonglistScroll {
+  background-color: rgba(0,0,0,0.02);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+window.theme-light list row {
+  color: #1A1D26;
+  background-color: transparent;
+}
+window.theme-light list row:hover    { background-color: rgba(0,0,0,0.04); }
+window.theme-light list row:selected {
+  background-color: rgba(95,211,224,0.10);
+  box-shadow: inset 0 0 0 1px rgba(95,211,224,0.30);
+  color: #1A1D26;
+}
+window.theme-light list row.playing {
+  background-color: rgba(95,211,224,0.14);
+  color: #008EA0;
+}
+window.theme-light list row:selected.playing { background-color: rgba(95,211,224,0.20); color: #008EA0; }
+
+/* per-row remove button */
+window.theme-light list row button {
+  color: #8A93A6;
+  background-color: transparent;
+}
+window.theme-light list row button:hover { background-color: rgba(0,0,0,0.06); color: #1A1D26; }
+
+/* ---------- transport buttons ---------- */
+window.theme-light button {
+  background-color: transparent;
+  color: #5A6270;
+  border: 1px solid transparent;
+}
+window.theme-light button:hover  { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
+window.theme-light button:active { background-color: rgba(95,211,224,0.16); color: #008EA0; }
+window.theme-light button:checked { background-color: rgba(95,211,224,0.16); color: #008EA0; }
+window.theme-light button.engaged {
+  background-color: rgba(95,211,224,0.16);
+  color: #008EA0;
+  border-color: rgba(95,211,224,0.30);
+}
+
+/* ghost surface buttons */
+window.theme-light #BtnOpen,
+window.theme-light #BtnOpenCD {
+  background-color: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.10);
+  color: #1A1D26;
+}
+window.theme-light #BtnOpen:hover,
+window.theme-light #BtnOpenCD:hover {
+  background-color: rgba(0,0,0,0.07);
+  border-color: rgba(95,211,224,0.35);
+}
+window.theme-light #btn-dot { color: #8A93A6; }
+
+/* ---------- seek scale ---------- */
+window.theme-light scale trough {
+  background-color: rgba(0,0,0,0.08);
+}
+window.theme-light scale highlight {
+  background-color: #5FD3E0;
+}
+window.theme-light scale slider {
+  background-color: #F0F2F5;
+  border: 2px solid #5FD3E0;
+  box-shadow: 0 0 8px rgba(95,211,224,0.35);
+}
+
+/* volume slider muted state */
+window.theme-light #VolumeScale.muted highlight { background-color: rgba(26,29,38,0.35); }
+window.theme-light #VolumeScale.muted slider {
+  background-color: #8A93A6;
+  border-color: rgba(26,29,38,0.40);
+}
+
+/* ---------- scrollbars ---------- */
+window.theme-light scrollbar slider {
+  background-color: rgba(0,0,0,0.12);
+}
+window.theme-light scrollbar slider:hover { background-color: rgba(0,0,0,0.22); }
+
+/* ---------- lyrics panel ---------- */
+window.theme-light #LyricsScroll {
+  background-color: rgba(0,0,0,0.02);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+window.theme-light textview text {
+  color: #5A6270;
+}
+window.theme-light textview text selection {
+  background-color: rgba(95,211,224,0.22);
+  color: #008EA0;
+}
+
+/* ---------- volume button ---------- */
+window.theme-light volumebutton button {
+  border: 1px solid rgba(0,0,0,0.08);
+  background-color: transparent;
+  color: #5A6270;
+}
+window.theme-light volumebutton button:hover { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
+
+/* ---------- songlist rows ---------- */
+window.theme-light #row-lead { color: #8A93A6; }
+window.theme-light #row-title  { color: #1A1D26; }
+window.theme-light #row-artist { color: #8A93A6; }
+window.theme-light #row-dur    { color: #8A93A6; }
+window.theme-light list row:hover #row-dur { color: #5A6270; }
+
+/* ---------- file dialog ---------- */
+window.theme-light separator {
+  background-color: rgba(0,0,0,0.08);
+}
+window.theme-light #fd-path { color: #5A6270; }
+window.theme-light entry {
+  background-color: rgba(0,0,0,0.03);
+  border: 1px solid rgba(0,0,0,0.10);
+  color: #5A6270;
+}
+window.theme-light entry:focus { border-color: rgba(95,211,224,0.35); }
+window.theme-light entry image { color: #8A93A6; }
+window.theme-light #fd-place-icon,
+window.theme-light #fd-folder-icon { color: #5A6270; }
+window.theme-light #fd-audio-icon { color: #5FD3E0; }
+window.theme-light #fd-col { color: #8A93A6; }
+window.theme-light #fd-name { color: #1A1D26; }
+window.theme-light #fd-meta { color: #8A93A6; }
+window.theme-light #fd-selinfo { color: #8A93A6; }
+
+/* sidebar headers */
+window.theme-light #fd-side-header { color: #8A93A6; }
+
+/* breadcrumb */
+window.theme-light #fd-crumb {
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: #5A6270;
+}
+window.theme-light #fd-crumb:hover { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
+window.theme-light #fd-crumb.current label { color: #1A1D26; }
+window.theme-light #fd-crumb-sep { color: #8A93A6; }
+
+/* footer buttons */
+window.theme-light button.btn-ghost {
+  background-color: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.10);
+}
+window.theme-light button.btn-ghost label { color: #1A1D26; }
+window.theme-light button.btn-ghost:hover {
+  background-color: rgba(0,0,0,0.07);
+  border-color: rgba(95,211,224,0.35);
+}
+window.theme-light button.btn-primary {
+  background-color: rgba(95,211,224,0.18);
+  border: 1px solid #5FD3E0;
+}
+window.theme-light button.btn-primary label { color: #008EA0; }
+window.theme-light button.btn-primary:hover { background-color: rgba(95,211,224,0.28); }
+
+/* playing row cyan title + gold pulse */
+window.theme-light list row.playing #row-title { color: #008EA0; }
+window.theme-light list row.playing #row-lead { color: #C9A840; }
