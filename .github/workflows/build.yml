@@ -124,11 +124,12 @@ jobs:
           go mod download github.com/gotk3/gotk3
           GOTK3_VERSION=$(grep 'github.com/gotk3/gotk3' go.mod | awk '{print $2}')
           GOMODCACHE=$(cygpath -u "$(go env GOMODCACHE)")
-          GOTK3_GLIB="${GOMODCACHE}/github.com/gotk3/gotk3@${GOTK3_VERSION}/glib/glib.go.h"
-          if [ -f "$GOTK3_GLIB" ]; then
-            sed -i 's/^extern void /extern __declspec(dllexport) void /' "$GOTK3_GLIB"
-            sed -i 's/^extern gboolean /extern __declspec(dllexport) gboolean /' "$GOTK3_GLIB"
-            sed -i 's/^extern gint /extern __declspec(dllexport) gint /' "$GOTK3_GLIB"
+          GOTK3_DIR="${GOMODCACHE}/github.com/gotk3/gotk3@${GOTK3_VERSION}"
+          if [ -d "$GOTK3_DIR" ]; then
+            find "$GOTK3_DIR" -name '*.go.h' -print0 | xargs -0 sed -i \
+              -e 's/^extern void /extern __declspec(dllexport) void /' \
+              -e 's/^extern gboolean /extern __declspec(dllexport) gboolean /' \
+              -e 's/^extern gint /extern __declspec(dllexport) gint /'
           fi
       - name: Build
         shell: msys2 {0}
