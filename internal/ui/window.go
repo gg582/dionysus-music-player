@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"github.com/gg582/gozik/internal/config"
 	"github.com/gg582/gozik/internal/models"
 	"github.com/gg582/gozik/internal/mpris"
+	"github.com/gg582/gozik/internal/provider"
 	"github.com/gg582/gozik/internal/utils"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -77,6 +79,9 @@ type MainWindow struct {
 	themeButton      *gtk.Button
 	fileDialogWin    *gtk.Window
 	mprisServer      *mpris.Server
+	btnLinkServices  *gtk.Button
+	providerMgr      *provider.Manager
+	linkedProviders  int
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -89,10 +94,11 @@ type songRow struct {
 	dur    *gtk.Label
 }
 
-func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
+func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, error) {
 	mw := &MainWindow{
 		songs:       make([]models.Song, 0),
 		selectedIdx: -1,
+		providerMgr: mgr,
 	}
 
 	gtkSettings, err := gtk.SettingsGetDefault()
@@ -135,7 +141,14 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 			mw.listBox = lb
 			mw.listBox.Connect("row-selected", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
 				if row != nil {
+					if row.GetIndex() == mw.selectedIdx {
+						mw.selectedIdx = -1
+						lb.SelectRow(nil)
+						return
+					}
 					mw.selectedIdx = row.GetIndex()
+				} else {
+					mw.selectedIdx = -1
 				}
 			})
 		}
@@ -289,6 +302,9 @@ func NewMainWindow(app *gtk.Application) (*MainWindow, error) {
 	mw.win.Connect("destroy", func() {
 		mw.onQuit(app)
 	})
+
+	mw.updateLinkButtonVisibility()
+	mw.startProviderPolling()
 
 	app.AddWindow(mw.win)
 	return mw, nil
@@ -501,17 +517,54 @@ func (mw *MainWindow) showErrorDialog(msg string) {
 	dlg.Destroy()
 }
 
+func (mw *MainWindow) updateLinkButtonVisibility() {
+	if mw.btnLinkServices == nil {
+		return
+	}
+	if mw.linkedProviders > 0 {
+		mw.btnLinkServices.Show()
+	} else {
+		mw.btnLinkServices.Hide()
+	}
+}
+
+func (mw *MainWindow) startProviderPolling() {
+	if mw.providerMgr == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			count, err := mw.providerMgr.CountLinkedPlugins(ctx)
+			cancel()
+			if err != nil {
+				continue
+			}
+			if count != mw.linkedProviders {
+				mw.linkedProviders = count
+				glib.IdleAdd(func() bool {
+					mw.updateLinkButtonVisibility()
+					return false
+				})
+			}
+		}
+	}()
+}
+
 func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 	buttons := map[string]func(){
-		"Play":      mw.onPlay,
-		"Pause":     mw.onPause,
-		"Stop":      mw.onStop,
-		"Stop1":     mw.onPrev,
-		"Stop2":     mw.onNext,
-		"BtnOpen":   mw.onFileOpen,
-		"BtnOpenCD": mw.onOpenCD,
-		"BtnRemove": mw.removeSelectedSong,
-		"BtnTheme":  mw.onThemeToggle,
+		"Play":            mw.onPlay,
+		"Pause":           mw.onPause,
+		"Stop":            mw.onStop,
+		"Stop1":           mw.onPrev,
+		"Stop2":           mw.onNext,
+		"BtnOpen":         mw.onFileOpen,
+		"BtnOpenCD":       mw.onOpenCD,
+		"BtnLinkServices": mw.onLinkServices,
+		"BtnRemove":       mw.removeSelectedSong,
+		"BtnTheme":        mw.onThemeToggle,
 	}
 
 	for id, handler := range buttons {
@@ -530,6 +583,8 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 				mw.btnStop = btn
 			case "BtnTheme":
 				mw.themeButton = btn
+			case "BtnLinkServices":
+				mw.btnLinkServices = btn
 			}
 		}
 	}

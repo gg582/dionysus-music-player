@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package music.v1;
+
+option go_package = "github.com/gg582/gozik/api/music/v1;musicv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PluginStatus {
+  PLUGIN_STATUS_UNSPECIFIED = 0;
+  PLUGIN_STATUS_READY = 1;
+  PLUGIN_STATUS_LINKED = 2;
+  PLUGIN_STATUS_ERROR = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+message PluginProvider {
+  string id = 1;
+  string display_name = 2;
+  string icon_url = 3;
+  PluginStatus status = 4;
+}
+
+message ListAvailablePluginsRequest {}
+
+message ListAvailablePluginsResponse {
+  repeated PluginProvider plugins = 1;
+}
+
+message InitiateLinkRequest {
+  string provider_id = 1;
+}
+
+message InitiateLinkResponse {
+  string auth_url = 1;
+  string auth_method = 2;
+}
+
+message CompleteFirebaseLinkRequest {
+  string provider_id = 1;
+  string provider_access_token = 2;
+  string provider_id_token = 3;
+}
+
+message CompleteFirebaseLinkResponse {
+  bool success = 1;
+  string firebase_uid = 2;
+  google.protobuf.Timestamp linked_at = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Service Definition
+// ---------------------------------------------------------------------------
+
+service ProviderLinkService {
+  rpc ListAvailablePlugins(ListAvailablePluginsRequest) returns (ListAvailablePluginsResponse);
+  rpc InitiateLink(InitiateLinkRequest) returns (InitiateLinkResponse);
+  rpc CompleteFirebaseLink(CompleteFirebaseLinkRequest) returns (CompleteFirebaseLinkResponse);
+}

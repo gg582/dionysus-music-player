@@ -10,7 +10,7 @@ ICON_SIZES := 16 22 24 32 48 64 128 256 512
 
 LDFLAGS := -ldflags "-X github.com/gg582/gozik/internal/config.Prefix=$(PREFIX)"
 
-.PHONY: build run clean deps test icons install uninstall
+.PHONY: build run clean deps test icons install uninstall proto
 
 build:
 	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY) $(CMD)
@@ -27,6 +27,15 @@ deps:
 
 test:
 	go test ./...
+
+PROTOC := protoc
+PROTO_DIR := api/music/v1
+
+proto:
+	$(PROTOC) --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		$(PROTO_DIR)/music_provider.proto \
+		$(PROTO_DIR)/provider_link.proto
 
 icons:
 	@mkdir -p assets/icons/hicolor

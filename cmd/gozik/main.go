@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"github.com/gg582/gozik/internal/provider"
 	"github.com/gg582/gozik/internal/ui"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
@@ -23,8 +24,16 @@ func main() {
 
 	files := os.Args[1:]
 
+	// Attempt to connect to the local plugin coordinator.
+	// If the coordinator is not running, the UI falls back to local-only mode.
+	mgr, err := provider.NewManager("localhost:50051")
+	if err != nil {
+		log.Printf("Plugin coordinator unavailable: %v", err)
+		mgr = nil
+	}
+
 	app.Connect("activate", func() {
-		win, err := ui.NewMainWindow(app)
+		win, err := ui.NewMainWindow(app, mgr)
 		if err != nil {
 			log.Fatal("Could not create main window:", err)
 		}
@@ -33,6 +42,10 @@ func main() {
 			win.LoadFiles(files)
 		}
 	})
+
+	if mgr != nil {
+		defer mgr.Close()
+	}
 
 	// Only hand the program name to GtkApplication; file arguments are consumed
 	// above (GtkApplication with FLAGS_NONE would otherwise reject extra args).
