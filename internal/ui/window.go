@@ -34,54 +34,54 @@ var mainWindowXML = config.AssetPath("ui/gozik-main-window.glade")
 var mainWindowCSS = config.AssetPath("ui/gozik.css")
 
 type MainWindow struct {
-	win              *gtk.Window
-	listBox          *gtk.ListBox
-	timeLabel        *gtk.Label
-	totalTimeLabel   *gtk.Label
-	progressBar      *gtk.Scale
-	lyricsView       *gtk.TextView
-	albumCover       *gtk.Image
-	albumTitle       *gtk.Label
-	albumArtist      *gtk.Label
-	albumYear        *gtk.Label
-	queueCount       *gtk.Label
-	volumeScale      *gtk.Scale
-	volumeIcon       *gtk.Image
-	btnPlay          *gtk.Button
-	btnPause         *gtk.Button
-	btnStop          *gtk.Button
-	muted            bool
-	preMuteVol       float64
-	player           *audio.Player
-	songs            []models.Song
-	rows             []*songRow
-	selectedIdx      int
-	ticker           *time.Ticker
-	tickerDone       chan struct{}
-	syncedLyrics     []audio.LRCLine
-	currentLyricLine int
-	lyricTagNow      *gtk.TextTag
-	lyricTagSung     *gtk.TextTag
-	lyricsCancel     chan struct{}
-	gtkSettings      *gtk.Settings
-	desktopSettings  *glib.Settings
-	seeking          bool
-	settingProgress  bool
-	closing          atomic.Bool
-	playMode         models.PlayMode
-	btnRepeat        *gtk.Button
-	btnRepeatLabel   *gtk.Label
-	shuffle          bool
-	btnShuffle       *gtk.Button
-	btnShuffleLabel  *gtk.Label
-	themeMode        string
-	inThemeUpdate    bool
-	themeButton      *gtk.Button
-	fileDialogWin    *gtk.Window
-	mprisServer      *mpris.Server
-	btnLinkServices  *gtk.Button
-	providerMgr      *provider.Manager
-	linkedProviders  int
+	win                 *gtk.Window
+	listBox             *gtk.ListBox
+	timeLabel           *gtk.Label
+	totalTimeLabel      *gtk.Label
+	progressBar         *gtk.Scale
+	lyricsView          *gtk.TextView
+	albumCover          *gtk.Image
+	albumTitle          *gtk.Label
+	albumArtist         *gtk.Label
+	albumYear           *gtk.Label
+	queueCount          *gtk.Label
+	volumeScale         *gtk.Scale
+	volumeIcon          *gtk.Image
+	btnPlay             *gtk.Button
+	btnPause            *gtk.Button
+	btnStop             *gtk.Button
+	muted               bool
+	preMuteVol          float64
+	player              *audio.Player
+	songs               []models.Song
+	rows                []*songRow
+	selectedIdx         int
+	ticker              *time.Ticker
+	tickerDone          chan struct{}
+	syncedLyrics        []audio.LRCLine
+	currentLyricLine    int
+	lyricTagNow         *gtk.TextTag
+	lyricTagSung        *gtk.TextTag
+	lyricsCancel        chan struct{}
+	gtkSettings         *gtk.Settings
+	desktopSettings     *glib.Settings
+	seeking             bool
+	settingProgress     bool
+	closing             atomic.Bool
+	playMode            models.PlayMode
+	btnRepeat           *gtk.Button
+	btnRepeatLabel      *gtk.Label
+	shuffle             bool
+	btnShuffle          *gtk.Button
+	btnShuffleLabel     *gtk.Label
+	themeMode           string
+	inThemeUpdate       bool
+	themeButton         *gtk.Button
+	fileDialogWin       *gtk.Window
+	mprisServer         *mpris.Server
+	btnOpenProvider     *gtk.Button
+	providerMgr         *provider.Manager
+	providerCount       int
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -251,17 +251,21 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 			mw.removeSelectedSong()
 			return true
 		case gdk.KEY_o:
-			if ev.State()&gdk.CONTROL_MASK != 0 {
-				mw.onFileOpen()
+			if gdk.ModifierType(ev.State())&gdk.CONTROL_MASK != 0 {
+				if gdk.ModifierType(ev.State())&gdk.SHIFT_MASK != 0 {
+					mw.onOpenProvider()
+				} else {
+					mw.onFileOpen()
+				}
 				return true
 			}
 		case gdk.KEY_u:
-			if ev.State()&gdk.CONTROL_MASK != 0 {
+			if gdk.ModifierType(ev.State())&gdk.CONTROL_MASK != 0 {
 				mw.onOpenStream()
 				return true
 			}
 		case gdk.KEY_d:
-			if ev.State()&gdk.CONTROL_MASK != 0 {
+			if gdk.ModifierType(ev.State())&gdk.CONTROL_MASK != 0 {
 				mw.onOpenCD()
 				return true
 			}
@@ -303,7 +307,7 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 		mw.onQuit(app)
 	})
 
-	mw.updateLinkButtonVisibility()
+	mw.updateProviderButtonVisibility()
 	mw.startProviderPolling()
 
 	app.AddWindow(mw.win)
@@ -346,6 +350,19 @@ func (mw *MainWindow) bindSystemTheme(settings *gtk.Settings) {
 		mw.desktopSettings.Connect("changed::color-scheme", func() {
 			mw.applySystemTheme()
 		})
+	}
+}
+
+func (mw *MainWindow) isDarkTheme() bool {
+	switch mw.themeMode {
+	case "dark":
+		return true
+	case "light":
+		return false
+	case "system":
+		return prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)
+	default:
+		return prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)
 	}
 }
 
@@ -517,14 +534,14 @@ func (mw *MainWindow) showErrorDialog(msg string) {
 	dlg.Destroy()
 }
 
-func (mw *MainWindow) updateLinkButtonVisibility() {
-	if mw.btnLinkServices == nil {
+func (mw *MainWindow) updateProviderButtonVisibility() {
+	if mw.btnOpenProvider == nil {
 		return
 	}
-	if mw.linkedProviders > 0 {
-		mw.btnLinkServices.Show()
+	if mw.providerCount > 0 {
+		mw.btnOpenProvider.Show()
 	} else {
-		mw.btnLinkServices.Hide()
+		mw.btnOpenProvider.Hide()
 	}
 }
 
@@ -533,19 +550,29 @@ func (mw *MainWindow) startProviderPolling() {
 		return
 	}
 	go func() {
+		// Run an initial discovery immediately so the button shows up on startup.
+		mw.providerMgr.DiscoverServices(context.Background())
+		count := mw.providerMgr.Count()
+		if count != mw.providerCount {
+			mw.providerCount = count
+			glib.IdleAdd(func() bool {
+				mw.updateProviderButtonVisibility()
+				return false
+			})
+		}
+
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			count, err := mw.providerMgr.CountLinkedPlugins(ctx)
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			mw.providerMgr.DiscoverServices(ctx)
 			cancel()
-			if err != nil {
-				continue
-			}
-			if count != mw.linkedProviders {
-				mw.linkedProviders = count
+
+			count := mw.providerMgr.Count()
+			if count != mw.providerCount {
+				mw.providerCount = count
 				glib.IdleAdd(func() bool {
-					mw.updateLinkButtonVisibility()
+					mw.updateProviderButtonVisibility()
 					return false
 				})
 			}
@@ -562,7 +589,7 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"Stop2":           mw.onNext,
 		"BtnOpen":         mw.onFileOpen,
 		"BtnOpenCD":       mw.onOpenCD,
-		"BtnLinkServices": mw.onLinkServices,
+		"BtnOpenProvider": mw.onOpenProvider,
 		"BtnRemove":       mw.removeSelectedSong,
 		"BtnTheme":        mw.onThemeToggle,
 	}
@@ -583,8 +610,8 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 				mw.btnStop = btn
 			case "BtnTheme":
 				mw.themeButton = btn
-			case "BtnLinkServices":
-				mw.btnLinkServices = btn
+			case "BtnOpenProvider":
+				mw.btnOpenProvider = btn
 			}
 		}
 	}
@@ -978,7 +1005,7 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 	mw.updateQueueHeader()
 
 	// Probe duration in the background so the queue total + row time fill in.
-	if !song.IsCD && song.Location != "" {
+	if !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
 		loc := song.Location
 		go func() {
 			d, err := audio.ProbeDuration(loc)
@@ -1001,7 +1028,7 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 
 	// Enrich the row with title/artist at import time (not only on play), so the
 	// queue shows real titles instead of file names whenever metadata is found.
-	if !song.IsCD && song.Location != "" && song.Title == "" {
+	if !song.IsCD && song.Location != "" && song.Title == "" && song.ProviderTrackID == "" {
 		mw.enrichSongRow(song.Location, song.Name)
 	}
 }
@@ -1086,6 +1113,12 @@ func (mw *MainWindow) onPlay() {
 
 	song := mw.songs[idx]
 
+	// Provider tracks need stream resolution before playback.
+	if song.ProviderTrackID != "" && song.ProviderID != "" {
+		go mw.playProviderTrack(idx)
+		return
+	}
+
 	// Check if the same song/segment is already loaded (paused or playing)
 	alreadyLoaded := false
 	if song.IsCD {
@@ -1129,6 +1162,61 @@ func (mw *MainWindow) onPlay() {
 	mw.startTicker()
 	mw.refreshPlayingHighlight()
 	mw.setEngaged(mw.btnPlay)
+}
+
+// playProviderTrack resolves the stream URL for a provider track and then plays it.
+func (mw *MainWindow) playProviderTrack(idx int) {
+	if idx < 0 || idx >= len(mw.songs) {
+		return
+	}
+	song := &mw.songs[idx]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	streamURL, headers, err := mw.providerMgr.ResolveStream(ctx, song.ProviderID, song.ProviderTrackID)
+	cancel()
+	if err != nil {
+		glib.IdleAdd(func() bool {
+			mw.showErrorDialog(fmt.Sprintf("Failed to resolve stream: %v", err))
+			return false
+		})
+		return
+	}
+
+	song.StreamURL = streamURL
+	song.StreamHeaders = headers
+
+	glib.IdleAdd(func() bool {
+		if mw.closing.Load() {
+			return false
+		}
+		if mw.player == nil {
+			return false
+		}
+
+		alreadyLoaded := !mw.player.IsCDLoaded() && mw.player.CurrentFile() == streamURL
+		if !alreadyLoaded {
+			if err := mw.player.LoadStream(streamURL, song.StreamHeaders); err != nil {
+				mw.showErrorDialog(fmt.Sprintf("Failed to load stream: %v", err))
+				return false
+			}
+			mw.player.SetDuration(time.Duration(song.Duration) * time.Second)
+		}
+		if err := mw.player.Play(); err != nil {
+			log.Println("Failed to play:", err)
+			return false
+		}
+		if mw.volumeScale != nil {
+			mw.player.SetVolume(mw.volumeScale.GetValue())
+		}
+		mw.updateMPRISStatus()
+		mw.updateMPRISMetadata()
+		mw.loadSongInfo(song)
+		mw.loadLyrics(song)
+		mw.startTicker()
+		mw.refreshPlayingHighlight()
+		mw.setEngaged(mw.btnPlay)
+		return false
+	})
 }
 
 func (mw *MainWindow) onPause() {
@@ -1562,6 +1650,22 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 	})
 
 	go func() {
+		// Provider tracks already have metadata; skip local file extraction.
+		if song.ProviderTrackID != "" {
+			// Download cover art from provider if available.
+			if song.CoverArtURL != "" && len(song.CoverData) == 0 {
+				imgData, err := audio.DownloadImage(song.CoverArtURL)
+				if err == nil {
+					song.CoverData = imgData
+					glib.IdleAdd(func() bool {
+						mw.setAlbumCover(song.CoverData)
+						return false
+					})
+				}
+			}
+			return
+		}
+
 		// 1. Try metadata first (artist/album/title + embedded cover)
 		if song.Artist == "" || song.Album == "" || song.Title == "" || len(song.CoverData) == 0 {
 			meta, err := audio.ExtractMetadata(song.Location)

@@ -591,3 +591,43 @@ window.theme-light headerbar .subtitle {
   color: #5A6270;
 }
 
+/* ---------- provider dialog (reuses main window bg) ---------- */
+dialog {
+  background-color: @abyss1;
+  background-image:
+    url("stars.png"),
+    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.075), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.04), transparent),
+    radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.50));
+  background-repeat: no-repeat;
+  background-position: top left;
+  border: none;
+  box-shadow: none;
+}
+window.theme-light dialog {
+  background-color: #F0F2F5;
+  background-image:
+    url("stars-light.png"),
+    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.10), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.06), transparent),
+    radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.08));
+}
+
+dialog box,
+dialog .dialog-vbox,
+dialog .dialog-action-area {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+#ProviderScroll {
+  background-color: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+window.theme-light #ProviderScroll {
+  background-color: rgba(0,0,0,0.02);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+

@@ -44,13 +44,14 @@ type Player struct {
 	cdDev     *cdrom.Device
 
 	// current loaded track info
-	currentFile   string
-	currentDevice string
-	currentTrack  int
-	isCD          bool
-	currentStart  int     // seconds
-	currentEnd    int     // seconds
-	replayGain    float64 // log2-scaled gain correction
+	currentFile       string
+	currentDevice     string
+	currentTrack      int
+	isCD              bool
+	currentStart      int           // seconds
+	currentEnd        int           // seconds
+	replayGain        float64       // log2-scaled gain correction
+	expectedDuration  time.Duration // fallback when streamer.Len() == 0 (e.g. network streams)
 }
 
 func NewPlayer() (*Player, error) {
@@ -82,6 +83,7 @@ func (p *Player) reset() {
 	p.currentStart = 0
 	p.currentEnd = 0
 	p.replayGain = 0
+	p.expectedDuration = 0
 	p.format = beep.Format{}
 	p.mu.Unlock()
 
@@ -211,7 +213,7 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 
 	if IsStreamURL(filename) {
 		f.Close()
-		streamer, format, err = decodeFFmpegStream(filename)
+		streamer, format, err = decodeFFmpegStream(filename, nil)
 	} else {
 		switch ext {
 		case "mp3":
@@ -292,6 +294,39 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 		p.replayGain = gain * (math.Log2(10) / 20)
 		p.mu.Unlock()
 	}
+
+	return nil
+}
+
+// LoadStream loads an HTTP(S) stream URL with optional HTTP headers.
+func (p *Player) LoadStream(url string, headers map[string]string) error {
+	p.reset()
+
+	streamer, format, err := decodeFFmpegStream(url, headers)
+	if err != nil {
+		return err
+	}
+
+	if err := p.initSpeaker(); err != nil {
+		streamer.Close()
+		return err
+	}
+
+	p.mu.Lock()
+	p.streamer = streamer
+	p.format = format
+	p.ctrl = &beep.Ctrl{Streamer: p.streamer, Paused: false}
+	p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
+	p.volume = &effects.Volume{Streamer: p.resampled, Base: 2, Volume: 0}
+	p.state = StateIdle
+	p.currentFile = url
+	p.currentDevice = ""
+	p.currentTrack = 0
+	p.isCD = false
+	p.currentStart = 0
+	p.currentEnd = 0
+	p.replayGain = 0
+	p.mu.Unlock()
 
 	return nil
 }
@@ -495,16 +530,26 @@ func (p *Player) Position() time.Duration {
 	return time.Second * time.Duration(samples) / time.Duration(format.SampleRate)
 }
 
+func (p *Player) SetDuration(d time.Duration) {
+	p.mu.Lock()
+	p.expectedDuration = d
+	p.mu.Unlock()
+}
+
 func (p *Player) Length() time.Duration {
 	p.mu.Lock()
 	streamer := p.streamer
 	format := p.format
+	expected := p.expectedDuration
 	p.mu.Unlock()
 	if streamer == nil || format.SampleRate == 0 {
 		return 0
 	}
 	samples := streamer.Len()
-	return time.Second * time.Duration(samples) / time.Duration(format.SampleRate)
+	if samples > 0 {
+		return time.Second * time.Duration(samples) / time.Duration(format.SampleRate)
+	}
+	return expected
 }
 
 func (p *Player) Seek(pos time.Duration) error {
@@ -513,6 +558,7 @@ func (p *Player) Seek(pos time.Duration) error {
 	format := p.format
 	ctrl := p.ctrl
 	volume := p.volume
+	expected := p.expectedDuration
 	p.mu.Unlock()
 	if streamer == nil || format.SampleRate == 0 {
 		return fmt.Errorf("no file loaded")
@@ -521,8 +567,12 @@ func (p *Player) Seek(pos time.Duration) error {
 	if samplePos < 0 {
 		samplePos = 0
 	}
-	if samplePos > streamer.Len() {
-		samplePos = streamer.Len()
+	maxSamples := streamer.Len()
+	if maxSamples <= 0 && expected > 0 {
+		maxSamples = int(expected * time.Duration(format.SampleRate) / time.Second)
+	}
+	if samplePos > maxSamples {
+		samplePos = maxSamples
 	}
 	speaker.Lock()
 	err := streamer.Seek(samplePos)
