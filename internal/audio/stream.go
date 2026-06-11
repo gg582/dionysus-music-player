@@ -1,9 +1,11 @@
 package audio
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os/exec"
 	"strings"
@@ -13,11 +15,20 @@ import (
 
 // decodeFFmpegStream decodes a network URL via FFmpeg stdout streaming.
 // Seeking is not supported (Len() == 0, Seek() returns an error).
-func decodeFFmpegStream(url string) (beep.StreamSeekCloser, beep.Format, error) {
-	cmd := exec.Command(
-		"ffmpeg",
+func decodeFFmpegStream(url string, headers map[string]string) (beep.StreamSeekCloser, beep.Format, error) {
+	args := []string{
 		"-hide_banner",
 		"-loglevel", "error",
+	}
+	for k, v := range headers {
+		args = append(args, "-headers", fmt.Sprintf("%s: %s\r\n", k, v))
+	}
+	// Reconnect when YouTube resets the TLS connection mid-stream.
+	// Without these flags FFmpeg exits (often with code 0) after an
+	// inconsistent amount of decoded audio, causing truncated playback.
+	args = append(args,
+		"-reconnect", "1",
+		"-reconnect_streamed", "1",
 		"-i", url,
 		"-vn",
 		"-f", "f32le",
@@ -26,12 +37,15 @@ func decodeFFmpegStream(url string) (beep.StreamSeekCloser, beep.Format, error) 
 		"-ar", fmt.Sprint(ffmpegFallbackSampleRate),
 		"pipe:1",
 	)
+	cmd := exec.Command("ffmpeg", args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, beep.Format{}, fmt.Errorf("ffmpeg stdout pipe: %w", err)
 	}
-	cmd.Stderr = nil // silence stderr; or could capture if needed
+
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, beep.Format{}, fmt.Errorf("ffmpeg start: %w", err)
@@ -42,19 +56,42 @@ func decodeFFmpegStream(url string) (beep.StreamSeekCloser, beep.Format, error) 
 		NumChannels: 2,
 		Precision:   4,
 	}
-	return &ffmpegStream{
+
+	fs := &ffmpegStream{
 		stdout: stdout,
 		cmd:    cmd,
 		format: format,
-	}, format, nil
+		stderr: stderr,
+		done:   make(chan struct{}),
+	}
+
+	// Watch FFmpeg so we can surface connection errors that would otherwise
+	// be invisible (stderr was previously discarded and FFmpeg sometimes
+	// exits with code 0 after a mid-stream connection reset).
+	go func() {
+		defer close(fs.done)
+		if err := cmd.Wait(); err != nil {
+			fs.waitErr = err
+			if msg := strings.TrimSpace(stderr.String()); msg != "" {
+				log.Printf("ffmpeg stream error: %v: %s", err, msg)
+			} else {
+				log.Printf("ffmpeg stream error: %v", err)
+			}
+		}
+	}()
+
+	return fs, format, nil
 }
 
 type ffmpegStream struct {
-	stdout io.ReadCloser
-	cmd    *exec.Cmd
-	pos    int
-	format beep.Format
-	err    error
+	stdout  io.ReadCloser
+	cmd     *exec.Cmd
+	pos     int
+	format  beep.Format
+	err     error
+	waitErr error
+	stderr  *bytes.Buffer
+	done    chan struct{}
 }
 
 func (s *ffmpegStream) Stream(samples [][2]float64) (int, bool) {
@@ -92,7 +129,10 @@ func (s *ffmpegStream) Stream(samples [][2]float64) (int, bool) {
 }
 
 func (s *ffmpegStream) Err() error {
-	return s.err
+	if s.err != nil {
+		return s.err
+	}
+	return s.waitErr
 }
 
 func (s *ffmpegStream) Len() int {
@@ -110,7 +150,7 @@ func (s *ffmpegStream) Seek(p int) error {
 func (s *ffmpegStream) Close() error {
 	_ = s.stdout.Close()
 	_ = s.cmd.Process.Kill()
-	_ = s.cmd.Wait()
+	<-s.done
 	return nil
 }
 
