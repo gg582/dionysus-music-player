@@ -16,6 +16,7 @@ import (
 	"github.com/gg582/gozik/internal/config"
 	"github.com/gg582/gozik/internal/models"
 	"github.com/gg582/gozik/internal/mpris"
+	"github.com/gg582/gozik/internal/playlist"
 	"github.com/gg582/gozik/internal/provider"
 	"github.com/gg582/gozik/internal/utils"
 	"github.com/gotk3/gotk3/gdk"
@@ -77,7 +78,7 @@ type MainWindow struct {
 	themeMode           string
 	inThemeUpdate       bool
 	themeButton         *gtk.Button
-	fileDialogWin       *gtk.Window
+	fileDialog          *fileDialog
 	mprisServer         *mpris.Server
 	btnOpenProvider     *gtk.Button
 	providerMgr         *provider.Manager
@@ -410,16 +411,8 @@ func (mw *MainWindow) applySystemTheme() {
 	}
 	mw.updateThemeButtonIcon()
 
-	if mw.fileDialogWin != nil {
-		if ctx, err := mw.fileDialogWin.GetStyleContext(); err == nil && ctx != nil {
-			if dark {
-				ctx.RemoveClass(themeClassLight)
-				ctx.AddClass(themeClassDark)
-			} else {
-				ctx.RemoveClass(themeClassDark)
-				ctx.AddClass(themeClassLight)
-			}
-		}
+	if mw.fileDialog != nil {
+		mw.fileDialog.applyTheme()
 	}
 	mw.updateLyricTagColors()
 }
@@ -590,6 +583,8 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"BtnOpen":         mw.onFileOpen,
 		"BtnOpenCD":       mw.onOpenCD,
 		"BtnOpenProvider": mw.onOpenProvider,
+		"BtnSavePlaylist": mw.onSavePlaylist,
+		"BtnLoadPlaylist": mw.onLoadPlaylist,
 		"BtnRemove":       mw.removeSelectedSong,
 		"BtnTheme":        mw.onThemeToggle,
 	}
@@ -833,6 +828,24 @@ func (mw *MainWindow) onFileOpen() {
 	mw.openCosmicFileDialog()
 }
 
+func (mw *MainWindow) onSavePlaylist() {
+	if len(mw.songs) == 0 {
+		mw.showErrorDialog("The queue is empty. Add some tracks before saving a playlist.")
+		return
+	}
+	defaultName := "playlist.gopl"
+	mw.openCosmicSaveDialog(defaultName, func(path string) {
+		if err := playlist.Save(path, "", mw.songs); err != nil {
+			mw.showErrorDialog(fmt.Sprintf("Failed to save playlist: %v", err))
+			return
+		}
+	})
+}
+
+func (mw *MainWindow) onLoadPlaylist() {
+	mw.openCosmicLoadDialog()
+}
+
 func (mw *MainWindow) onOpenStream() {
 	dlg, err := gtk.DialogNewWithButtons("Open Stream", mw.win, gtk.DIALOG_MODAL,
 		[]interface{}{"Cancel", gtk.RESPONSE_CANCEL, "Open", gtk.RESPONSE_ACCEPT})
@@ -873,6 +886,21 @@ func (mw *MainWindow) LoadFiles(paths []string) {
 		ext := strings.ToLower(filepath.Ext(f))
 		if len(ext) > 1 {
 			ext = ext[1:]
+		}
+		if ext == "gopl" {
+			name, songs, err := playlist.Load(f)
+			if err != nil {
+				log.Printf("Failed to load playlist %s: %v", f, err)
+				continue
+			}
+			for _, s := range songs {
+				mw.songs = append(mw.songs, s)
+				mw.appendSongToList(s)
+			}
+			if name != "" {
+				mw.win.SetTitle(fmt.Sprintf("Gozik — %s", name))
+			}
+			continue
 		}
 		if ext == "m3u" || ext == "m3u8" || ext == "pls" || ext == "xspf" {
 			var entries []string
@@ -1952,7 +1980,7 @@ func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscReleas
 
 func isSupported(ext string) bool {
 	switch ext {
-	case "mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "mod", "s3m", "xm", "it", "m3u", "m3u8", "cue", "pls", "xspf":
+	case "mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aiff", "aif", "dsd", "alac", "pcm", "raw", "aac", "mod", "s3m", "xm", "it", "m3u", "m3u8", "cue", "pls", "xspf", "gopl":
 		return true
 	}
 	return false

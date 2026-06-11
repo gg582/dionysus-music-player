@@ -13,20 +13,32 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 )
 
-// fileDialog is a custom, cosmic-dark "Open files" dialog that replaces the
-// native GtkFileChooser (which cannot be themed by the app CSS). It mirrors the
-// open.html mockup: grouped places sidebar, breadcrumb, file list, footer.
+// dialogMode selects the behaviour of the custom file dialog.
+type dialogMode int
+
+const (
+	modeOpen dialogMode = iota // multi-select open for audio/playlist files
+	modeSave                   // single-file save with filename entry
+	modeLoad                   // single-select open for .gopl playlists
+)
+
+// fileDialog is a custom, cosmic-dark file dialog that replaces the native
+// GtkFileChooser (which cannot be themed by the app CSS). It supports open,
+// save, and load modes, and reacts to light/dark theme toggles.
 type fileDialog struct {
-	mw        *MainWindow
-	win       *gtk.Window
-	crumbBox  *gtk.Box
-	listBox   *gtk.ListBox
-	selInfo   *gtk.Label
-	search    *gtk.SearchEntry
-	sideBox   *gtk.ListBox
-	cwd       string
-	entries   []fileEntry   // parallel to file-list rows
-	sideItems []sidebarItem // parallel to sidebar rows
+	mw            *MainWindow
+	win           *gtk.Window
+	crumbBox      *gtk.Box
+	listBox       *gtk.ListBox
+	selInfo       *gtk.Label
+	search        *gtk.SearchEntry
+	sideBox       *gtk.ListBox
+	cwd           string
+	entries       []fileEntry   // parallel to file-list rows
+	sideItems     []sidebarItem // parallel to sidebar rows
+	mode          dialogMode
+	filenameEntry *gtk.Entry
+	onSave        func(path string)
 }
 
 type sidebarItem struct {
@@ -46,26 +58,53 @@ type fileEntry struct {
 
 const recentSentinel = "RECENT"
 
-// openCosmicFileDialog builds and shows the custom open dialog.
+// openCosmicFileDialog shows the custom open dialog for audio/playlist files.
 func (mw *MainWindow) openCosmicFileDialog() {
-	d := &fileDialog{mw: mw}
+	d := newFileDialog(mw, modeOpen)
+	d.show()
+}
+
+// openCosmicSaveDialog shows the custom save dialog for .gopl playlists.
+func (mw *MainWindow) openCosmicSaveDialog(defaultName string, onSave func(path string)) {
+	d := newFileDialog(mw, modeSave)
+	d.filenameEntry.SetText(defaultName)
+	d.onSave = onSave
+	d.show()
+}
+
+// openCosmicLoadDialog shows the custom open dialog filtered to .gopl files.
+func (mw *MainWindow) openCosmicLoadDialog() {
+	d := newFileDialog(mw, modeLoad)
+	d.show()
+}
+
+func newFileDialog(mw *MainWindow, mode dialogMode) *fileDialog {
+	d := &fileDialog{mw: mw, mode: mode}
 
 	win, err := gtk.WindowNew(gtk.WINDOW_TOPLEVEL)
 	if err != nil {
-		return
+		return d
 	}
 	d.win = win
 	win.SetName("FileDialog")
-	win.SetTitle("Open Files")
 	win.SetTransientFor(mw.win)
 	win.SetModal(true)
 	win.SetDefaultSize(860, 640)
 	win.SetPosition(gtk.WIN_POS_CENTER_ON_PARENT)
 
+	switch mode {
+	case modeSave:
+		win.SetTitle("Save Playlist")
+	case modeLoad:
+		win.SetTitle("Load Playlist")
+	default:
+		win.SetTitle("Open Files")
+	}
+
 	root, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
 	win.Add(root)
 
-	// ---------- titlebar: breadcrumb + search ----------
+	// ---------- titlebar ----------
 	titlebar, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
 	titlebar.SetName("fd-titlebar")
 	titlebar.SetMarginStart(14)
@@ -77,27 +116,39 @@ func (mw *MainWindow) openCosmicFileDialog() {
 	d.crumbBox.SetName("fd-crumbs")
 	titlebar.PackStart(d.crumbBox, true, true, 0)
 
-	d.search, _ = gtk.SearchEntryNew()
-	d.search.SetName("fd-search")
-	d.search.SetPlaceholderText("Search")
-	d.search.SetSizeRequest(120, -1) // small by default; grows on focus
-	d.search.Connect("search-changed", func() { d.refilter() })
-	d.search.Connect("focus-in-event", func(_ *gtk.SearchEntry, _ *gdk.Event) bool {
-		d.search.SetSizeRequest(260, -1)
-		return false
-	})
-	d.search.Connect("focus-out-event", func(_ *gtk.SearchEntry, _ *gdk.Event) bool {
-		if t, _ := d.search.GetText(); strings.TrimSpace(t) == "" {
-			d.search.SetSizeRequest(120, -1)
-		}
-		return false
-	})
-	titlebar.PackEnd(d.search, false, false, 0)
-	root.PackStart(titlebar, false, false, 0)
+	if mode == modeSave {
+		nameLbl, _ := gtk.LabelNew("Name:")
+		nameLbl.SetName("fd-filename-label")
+		titlebar.PackEnd(nameLbl, false, false, 0)
 
+		d.filenameEntry, _ = gtk.EntryNew()
+		d.filenameEntry.SetName("fd-filename")
+		d.filenameEntry.SetPlaceholderText("playlist.gopl")
+		d.filenameEntry.SetSizeRequest(220, -1)
+		titlebar.PackEnd(d.filenameEntry, false, false, 0)
+	} else {
+		d.search, _ = gtk.SearchEntryNew()
+		d.search.SetName("fd-search")
+		d.search.SetPlaceholderText("Search")
+		d.search.SetSizeRequest(120, -1)
+		d.search.Connect("search-changed", func() { d.refilter() })
+		d.search.Connect("focus-in-event", func(_ *gtk.SearchEntry, _ *gdk.Event) bool {
+			d.search.SetSizeRequest(260, -1)
+			return false
+		})
+		d.search.Connect("focus-out-event", func(_ *gtk.SearchEntry, _ *gdk.Event) bool {
+			if t, _ := d.search.GetText(); strings.TrimSpace(t) == "" {
+				d.search.SetSizeRequest(120, -1)
+			}
+			return false
+		})
+		titlebar.PackEnd(d.search, false, false, 0)
+	}
+
+	root.PackStart(titlebar, false, false, 0)
 	addSep(root, gtk.ORIENTATION_HORIZONTAL)
 
-	// ---------- body: sidebar + main ----------
+	// ---------- body ----------
 	body, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
 	root.PackStart(body, true, true, 0)
 
@@ -121,7 +172,11 @@ func (mw *MainWindow) openCosmicFileDialog() {
 			return
 		}
 		if it.path == recentSentinel {
-			d.showRecent()
+			if mode == modeSave {
+				d.navigate(homeDir())
+			} else {
+				d.showRecent()
+			}
 		} else {
 			d.navigate(it.path)
 		}
@@ -142,16 +197,27 @@ func (mw *MainWindow) openCosmicFileDialog() {
 	fileScroll.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
 	d.listBox, _ = gtk.ListBoxNew()
 	d.listBox.SetName("fd-filelist")
-	d.listBox.SetSelectionMode(gtk.SELECTION_MULTIPLE)
-	// Single click selects; double-click only navigates folders (files never
-	// auto-open — the user must press Open).
+	if mode == modeOpen {
+		d.listBox.SetSelectionMode(gtk.SELECTION_MULTIPLE)
+	} else {
+		d.listBox.SetSelectionMode(gtk.SELECTION_SINGLE)
+	}
 	d.listBox.Connect("row-activated", func(_ *gtk.ListBox, r *gtk.ListBoxRow) {
 		if r == nil {
 			return
 		}
 		i := r.GetIndex()
-		if i >= 0 && i < len(d.entries) && d.entries[i].isDir {
+		if i < 0 || i >= len(d.entries) {
+			return
+		}
+		if d.entries[i].isDir {
 			d.navigate(d.entries[i].path)
+			return
+		}
+		if mode == modeSave {
+			d.filenameEntry.SetText(d.entries[i].name)
+		} else if mode == modeLoad {
+			d.loadSelected()
 		}
 	})
 	d.listBox.Connect("selected-rows-changed", func() { d.updateSelInfo() })
@@ -160,7 +226,7 @@ func (mw *MainWindow) openCosmicFileDialog() {
 
 	addSep(root, gtk.ORIENTATION_HORIZONTAL)
 
-	// ---------- footer: info (left) + Cancel + Open (Open rightmost) ----------
+	// ---------- footer ----------
 	footer, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 10)
 	footer.SetName("fd-footer")
 	footer.SetMarginStart(18)
@@ -173,13 +239,26 @@ func (mw *MainWindow) openCosmicFileDialog() {
 	d.selInfo.SetEllipsize(3)
 	footer.PackStart(d.selInfo, true, true, 0)
 
-	open, _ := gtk.ButtonNewWithLabel("Open")
-	open.SetName("fd-open")
-	if ctx, e := open.GetStyleContext(); e == nil {
+	confirmLabel := "Open"
+	if mode == modeSave {
+		confirmLabel = "Save"
+	}
+	confirm, _ := gtk.ButtonNewWithLabel(confirmLabel)
+	confirm.SetName("fd-open")
+	if ctx, e := confirm.GetStyleContext(); e == nil {
 		ctx.AddClass("btn-primary")
 	}
-	open.Connect("clicked", func() { d.openSelected() })
-	footer.PackEnd(open, false, false, 0)
+	confirm.Connect("clicked", func() {
+		switch mode {
+		case modeSave:
+			d.saveSelected()
+		case modeLoad:
+			d.loadSelected()
+		default:
+			d.openSelected()
+		}
+	})
+	footer.PackEnd(confirm, false, false, 0)
 
 	cancel, _ := gtk.ButtonNewWithLabel("Cancel")
 	cancel.SetName("fd-cancel")
@@ -200,22 +279,44 @@ func (mw *MainWindow) openCosmicFileDialog() {
 	})
 
 	win.Connect("destroy", func() {
-		mw.fileDialogWin = nil
+		mw.fileDialog = nil
 	})
 
-	// Apply current theme class to the dialog window
-	if ctx, err := win.GetStyleContext(); err == nil && ctx != nil {
-		if mw.themeMode == "light" || (mw.themeMode == "system" && !prefersDarkTheme(mw.gtkSettings, mw.desktopSettings)) {
-			ctx.AddClass(themeClassLight)
-		} else {
-			ctx.AddClass(themeClassDark)
-		}
-	}
-	mw.fileDialogWin = win
+	return d
+}
 
-	// open on Recent by default (like the mockup)
-	d.showRecent()
-	win.ShowAll()
+func (d *fileDialog) show() {
+	if d.win == nil {
+		return
+	}
+	d.applyTheme()
+	d.mw.fileDialog = d
+	if d.mode == modeSave {
+		d.navigate(homeDir())
+	} else {
+		d.showRecent()
+	}
+	d.win.ShowAll()
+}
+
+// applyTheme sets the dialog's light/dark CSS class to match the main window.
+func (d *fileDialog) applyTheme() {
+	if d.win == nil {
+		return
+	}
+	ctx, err := d.win.GetStyleContext()
+	if err != nil || ctx == nil {
+		return
+	}
+	isLight := d.mw.themeMode == "light" ||
+		(d.mw.themeMode == "system" && !prefersDarkTheme(d.mw.gtkSettings, d.mw.desktopSettings))
+	if isLight {
+		ctx.RemoveClass(themeClassDark)
+		ctx.AddClass(themeClassLight)
+	} else {
+		ctx.RemoveClass(themeClassLight)
+		ctx.AddClass(themeClassDark)
+	}
 }
 
 // ---------- sidebar ----------
@@ -401,8 +502,15 @@ func (d *fileDialog) navigate(path string) {
 			continue
 		}
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
-		if !isSupported(ext) {
-			continue
+		switch d.mode {
+		case modeSave, modeLoad:
+			if ext != "gopl" {
+				continue
+			}
+		default:
+			if !isSupported(ext) {
+				continue
+			}
 		}
 		var sz int64
 		if fi, e2 := e.Info(); e2 == nil {
@@ -440,8 +548,15 @@ func (d *fileDialog) showRecent() {
 				continue
 			}
 			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(e.Name()), "."))
-			if !isSupported(ext) {
-				continue
+			switch d.mode {
+			case modeSave, modeLoad:
+				if ext != "gopl" {
+					continue
+				}
+			default:
+				if !isSupported(ext) {
+					continue
+				}
 			}
 			var sz int64
 			if fi, e2 := e.Info(); e2 == nil {
@@ -510,6 +625,9 @@ func (d *fileDialog) fileRow(e fileEntry) *gtk.ListBoxRow {
 }
 
 func (d *fileDialog) refilter() {
+	if d.mode == modeSave {
+		return
+	}
 	q, _ := d.search.GetText()
 	q = strings.ToLower(strings.TrimSpace(q))
 	for i := range d.entries {
@@ -562,6 +680,61 @@ func (d *fileDialog) openSelected() {
 		d.mw.LoadFiles(paths)
 		return false
 	})
+}
+
+func (d *fileDialog) loadSelected() {
+	sel := d.listBox.GetSelectedRows()
+	var paths []string
+	sel.Foreach(func(item interface{}) {
+		if r, ok := item.(*gtk.ListBoxRow); ok {
+			i := r.GetIndex()
+			if i >= 0 && i < len(d.entries) && !d.entries[i].isDir {
+				paths = append(paths, d.entries[i].path)
+			}
+		}
+	})
+	if len(paths) == 0 {
+		return
+	}
+	d.win.Destroy()
+	glib.IdleAdd(func() bool {
+		d.mw.LoadFiles(paths)
+		return false
+	})
+}
+
+func (d *fileDialog) saveSelected() {
+	name, _ := d.filenameEntry.GetText()
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(name), ".gopl") {
+		name += ".gopl"
+	}
+	if d.cwd == "" || d.cwd == recentSentinel {
+		d.cwd = homeDir()
+	}
+	path := filepath.Join(d.cwd, name)
+
+	if _, err := os.Stat(path); err == nil {
+		confirm := gtk.MessageDialogNew(d.mw.win, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO,
+			"%s already exists. Overwrite?", path)
+		confirm.SetTitle("Confirm Overwrite")
+		resp := confirm.Run()
+		confirm.Destroy()
+		if resp != gtk.RESPONSE_YES {
+			return
+		}
+	}
+
+	d.win.Destroy()
+	if d.onSave != nil {
+		glib.IdleAdd(func() bool {
+			d.onSave(path)
+			return false
+		})
+	}
 }
 
 // ---------- helpers ----------
