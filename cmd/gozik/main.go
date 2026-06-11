@@ -24,13 +24,8 @@ func main() {
 
 	files := os.Args[1:]
 
-	// Attempt to connect to the local plugin coordinator.
-	// If the coordinator is not running, the UI falls back to local-only mode.
-	mgr, err := provider.NewManager("localhost:50051")
-	if err != nil {
-		log.Printf("Plugin coordinator unavailable: %v", err)
-		mgr = nil
-	}
+	// Set up the provider manager; it will auto-discover local services.
+	mgr := provider.NewManager()
 
 	app.Connect("activate", func() {
 		win, err := ui.NewMainWindow(app, mgr)

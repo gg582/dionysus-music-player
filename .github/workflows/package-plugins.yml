@@ -1,28 +1,3 @@
-# =============================================================================
-# .github/workflows/package-plugins.yml
-#
-# Multi-platform Nuitka AOT packaging workflow for the gozik-yt-music gRPC
-# plugin server located in ./gozik-yt-music/.
-#
-# Output artefacts per platform:
-#   Windows AMD64  → Inno Setup installer (.exe)
-#   Windows ARM64  → Inno Setup installer (.exe)
-#   macOS ARM64    → Disk image (.dmg)   via create-dmg
-#   Linux AMD64    → AppImage (.AppImage) on native ubuntu-latest runner
-#   Linux ARM64    → AppImage (.AppImage) inside QEMU arm64 container
-#   Linux RISCV64  → AppImage (.AppImage) inside QEMU riscv64 container
-#
-# Service / daemon registration per platform:
-#   Windows  → NSSM service installed by the Inno Setup [Run] section
-#   macOS    → LaunchAgent plist bundled inside the .app and installed on open
-#   Linux    → systemd user-unit copied into the AppImage; AppRun installs it
-#
-# Trigger conditions:
-#   • Any push to main/master that touches gozik-yt-music/** or this file
-#   • Any git tag matching plugin-v* (e.g. plugin-v1.2.3)
-#   • Manual workflow_dispatch (for ad-hoc packaging)
-# =============================================================================
-
 name: Package Plugins
 
 on:
@@ -31,312 +6,167 @@ on:
       - main
       - master
     paths:
-      - "gozik-yt-music/**"
-      - ".github/workflows/package-plugins.yml"
+      - '.github/workflows/package-plugins.yml'
     tags:
-      - "plugin-v*"
+      - 'plugin-v*'
   workflow_dispatch:
     inputs:
       debug_build:
-        description: "Retain Nuitka intermediate C sources (debug mode)"
+        description: 'Retain PyInstaller build artefacts (debug mode)'
         required: false
-        default: "false"
+        default: 'false'
         type: choice
         options:
-          - "false"
-          - "true"
+          - 'false'
+          - 'true'
 
-# Cancel in-progress runs on the same ref to avoid wasted runner minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# ---------------------------------------------------------------------------
-# Global environment variables shared across all jobs
-# ---------------------------------------------------------------------------
 env:
-  # Pinned tool versions — update here to propagate everywhere.
-  PYTHON_VERSION: "3.13"
-  NUITKA_VERSION: "4.1.2"
-  INNO_SETUP_VERSION: "6.4.2"
+  PYTHON_VERSION: '3.13'
+  PYINSTALLER_VERSION: '6.13.0'
+  INNO_SETUP_VERSION: '6.4.2'
+  PLUGIN_REPO: 'https://github.com/gosuda/gozik-yt-music.git'
+  PLUGIN_DIR: 'gozik-yt-music'
+  BINARY_NAME: 'gozik-yt-music-server'
+  DAEMON_DESCRIPTION: 'gozik YouTube Music gRPC plugin server'
+  DAEMON_PORT: '50051'
 
-  # Project paths relative to the repository root.
-  PLUGIN_DIR: "gozik-yt-music"
-  ENTRY_POINT: "gozik-yt-music/server.py"
-
-  # Binary name used by all packaging steps.
-  BINARY_NAME: "gozik-yt-music-server"
-
-  # gRPC daemon metadata used in service-registration scripts.
-  DAEMON_DESCRIPTION: "gozik YouTube Music gRPC plugin server"
-  DAEMON_PORT: "50051"
-
-# =============================================================================
-# JOB: build-windows
-#
-# Runs on native GitHub-hosted Windows runners (AMD64 and ARM64).
-# Compiles the Python source to a single .exe via Nuitka, then wraps it in an
-# Inno Setup installer that registers a Windows service via NSSM on install.
-# =============================================================================
 jobs:
   build-windows:
-    name: "Windows ${{ matrix.arch }} — Nuitka + Inno Setup"
+    name: 'Windows ${{ matrix.arch }} — PyInstaller + Inno Setup'
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 90
     continue-on-error: ${{ matrix.allow-failure }}
-
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ---------------------------------------------------------------
-          # Windows AMD64: standard hosted runner, GCC via chocolatey/winget
-          # ---------------------------------------------------------------
           - arch: amd64
             runs-on: windows-latest
             allow-failure: false
             python-arch: x64
-            # MinGW64 toolchain for GCC; Nuitka on Windows defaults to MSVC
-            # but we pin GCC via the CC env-var for consistency with Linux.
-            nuitka-extra-flags: ""
-            artifact-suffix: "windows-amd64"
-            installer-arch: "x64Compatible"
-
-          # ---------------------------------------------------------------
-          # Windows ARM64: GitHub-hosted Windows-on-ARM runner (windows-11-arm)
-          # ---------------------------------------------------------------
+            artifact-suffix: 'windows-amd64'
+            installer-arch: 'x64Compatible'
+            node-archive: 'node-v22.14.0-win-x64.zip'
+            node-url: 'https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip'
           - arch: arm64
             runs-on: windows-11-arm
-            allow-failure: true       # ARM64 runner availability may fluctuate
+            allow-failure: true
             python-arch: arm64
-            nuitka-extra-flags: ""
-            artifact-suffix: "windows-arm64"
-            installer-arch: "arm64"
-
+            artifact-suffix: 'windows-arm64'
+            installer-arch: 'arm64'
+            node-archive: 'node-v22.14.0-win-arm64.zip'
+            node-url: 'https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-arm64.zip'
     steps:
-      # -----------------------------------------------------------------------
-      # 1. Checkout — full depth so that git describe works for version strings
-      # -----------------------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # -----------------------------------------------------------------------
-      # 2. Set up Python (shared libpython is a CPython default on Windows)
-      # -----------------------------------------------------------------------
-      - name: Set up Python ${{ env.PYTHON_VERSION }} (${{ matrix.arch }})
-        uses: actions/setup-python@v5
+      - name: Clone plugin repository
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}"
+          cd ..
+          git clone --depth 1 "${{ env.PLUGIN_REPO }}" "${{ env.PLUGIN_DIR }}"
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: ${{ matrix.python-arch }}
           cache: pip
-          cache-dependency-path: ${{ env.PLUGIN_DIR }}/requirements.txt
-
-      # -----------------------------------------------------------------------
-      # 3. Install C compiler via Chocolatey
-      #    MSVC is auto-detected by Nuitka when present; we also install
-      #    mingw for the GCC fallback path on AMD64.
-      # -----------------------------------------------------------------------
-      - name: Install MinGW (AMD64 only)
-        if: matrix.arch == 'amd64'
-        shell: powershell
-        run: |
-          choco install mingw --no-progress -y
-          # Prepend MinGW bin to PATH so Nuitka finds gcc before MSVC cl.exe.
-          $mingwBin = "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
-          echo "$mingwBin" | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      # -----------------------------------------------------------------------
-      # 4. Install Python build dependencies into the CI-managed interpreter
-      # -----------------------------------------------------------------------
       - name: Install Python dependencies
-        working-directory: ${{ env.PLUGIN_DIR }}
         shell: powershell
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install "nuitka==${{ env.NUITKA_VERSION }}"
-          pip install ordered-set zstandard  # Nuitka optional speed-up deps
-
-      # -----------------------------------------------------------------------
-      # 5. Generate protobuf stubs
-      #    codegen.sh uses bash; invoke it via Git Bash / MSYS2 Git.
-      # -----------------------------------------------------------------------
+          pip install -r "..\${{ env.PLUGIN_DIR }}\requirements.txt"
+          pip install "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
       - name: Generate protobuf stubs
         shell: bash
         run: |
-          cd "${{ env.PLUGIN_DIR }}"
-          # Replace the venv-based python3 calls with the CI python.
-          GRPC_TOOLS_PROTO="$(python -c "import grpc_tools,os; print(os.path.join(os.path.dirname(grpc_tools.__file__),'_proto'))")"
-          PROTO_SRC="../gozik/api/music/v1"
-          OUT_DIR="generated"
-          mkdir -p "$OUT_DIR"
-          touch "$OUT_DIR/__init__.py"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/music_provider.proto"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/provider_link.proto"
-          # Fix import paths in generated grpc stubs.
-          for f in "$OUT_DIR"/*_pb2_grpc.py; do
-            sed -i 's/^import \(.*_pb2\) as/from generated import \1 as/' "$f"
-          done
-          echo "Proto stubs generated:"
-          ls -1 "$OUT_DIR"
-
-      # -----------------------------------------------------------------------
-      # 6. Resolve certifi CA bundle path for --include-data-files
-      # -----------------------------------------------------------------------
-      - name: Resolve certifi path
-        id: certifi
-        shell: bash
+          cd "${{ github.workspace }}"
+          cd "../${{ env.PLUGIN_DIR }}"
+          bash codegen.sh
+      - name: Download Node.js standalone binary
+        shell: powershell
         run: |
-          CERTIFI_PEM="$(python -c 'import certifi; print(certifi.where())')"
-          echo "pem=$CERTIFI_PEM" >> "$GITHUB_OUTPUT"
-          echo "Certifi PEM: $CERTIFI_PEM"
-
-      # -----------------------------------------------------------------------
-      # 7. Derive version string from git tag or commit SHA
-      # -----------------------------------------------------------------------
-      - name: Derive version
-        id: version
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/plugin-v* ]]; then
-            VER="${GITHUB_REF_NAME#plugin-v}"
-          else
-            VER="0.0.0-$(git rev-parse --short HEAD)"
-          fi
-          echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "Version: $VER"
-
-      # -----------------------------------------------------------------------
-      # 8. Nuitka compilation
-      #
-      #    Flag notes (Windows-specific):
-      #      --mode=onefile          single self-extracting ELF/PE
-      #      --windows-console-mode=disable
-      #                              suppress the terminal window; the daemon
-      #                              runs as a Windows service (no console needed)
-      #      --windows-file-version / --windows-product-version
-      #                              PE version stamp visible in Explorer properties
-      #      --windows-company-name  PE metadata
-      #      --lto=yes               link-time optimisation (GCC/MSVC)
-      #      --assume-yes-for-downloads
-      #                              bypass interactive download prompts in CI
-      # -----------------------------------------------------------------------
-      - name: Compile with Nuitka
-        working-directory: ${{ env.PLUGIN_DIR }}
+          $nodeUrl = "${{ matrix.node-url }}"
+          $nodeZip = "${{ matrix.node-archive }}"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip -UseBasicParsing
+          Expand-Archive -Path $nodeZip -DestinationPath "node_extracted" -Force
+          New-Item -ItemType Directory -Path "..\${{ env.PLUGIN_DIR }}\.tools\bin" -Force | Out-Null
+          Copy-Item "node_extracted\node.exe" -Destination "..\${{ env.PLUGIN_DIR }}\.tools\bin\node.exe"
+      - name: Build with PyInstaller
         shell: bash
         env:
-          CERTIFI_PEM: ${{ steps.certifi.outputs.pem }}
-          VERSION: ${{ steps.version.outputs.ver }}
-          DEBUG_FLAG: ${{ github.event.inputs.debug_build == 'true' && '--debug' || '' }}
+          DEBUG_FLAG: ${{ github.event.inputs.debug_build == 'true' && '--debug=all' || '' }}
         run: |
-          JOBS=$(python -c "import os; print(os.cpu_count() or 4)")
-          mkdir -p dist
-
-          python -m nuitka \
-            --mode=onefile \
-            --onefile-tempdir-spec="{CACHE_DIR}/gozik/ytmusic-server/{VERSION}" \
-            --output-dir=dist \
-            --output-filename="${{ env.BINARY_NAME }}.exe" \
-            --windows-console-mode=disable \
-            --windows-file-version="${{ steps.version.outputs.ver }}" \
-            --windows-product-version="${{ steps.version.outputs.ver }}" \
-            --windows-company-name="gosuda" \
-            --windows-product-name="gozik YouTube Music Plugin" \
-            --include-package=ytmusicapi \
-            --include-package=grpc \
-            --include-package=grpc._cython \
-            --include-package=google.protobuf \
-            --include-package=google.protobuf.internal \
-            --include-package=yt_dlp \
-            --include-package=yt_dlp.extractor \
-            --include-package=requests \
-            --include-package=certifi \
-            --include-package=charset_normalizer \
-            --include-package=idna \
-            --include-package=urllib3 \
-            --include-package=generated \
-            --include-package=handlers \
-            --include-package-data=ytmusicapi \
-            --include-package-data=grpc \
-            "--include-data-files=${CERTIFI_PEM}=certifi/cacert.pem" \
-            --include-data-dir=generated=generated \
-            --nofollow-import-to=tkinter \
-            --nofollow-import-to=unittest \
-            --nofollow-import-to=test \
-            --nofollow-import-to=distutils \
-            --nofollow-import-to=grpc_tools \
-            --nofollow-import-to=lib2to3 \
-            --nofollow-import-to=pydoc \
-            --nofollow-import-to=doctest \
-            --python-flag=no_site \
-            --python-flag=no_warnings \
-            --enable-plugins=anti-bloat \
-            --assume-yes-for-downloads \
-            --remove-output \
-            --lto=yes \
-            "--jobs=${JOBS}" \
-            ${{ matrix.nuitka-extra-flags }} \
+          cd "${{ github.workspace }}"
+          cd "../${{ env.PLUGIN_DIR }}"
+          mkdir -p certifi
+          python -c "import certifi, shutil; shutil.copy(certifi.where(), 'certifi/cacert.pem')"
+          pyinstaller \
+            --noconfirm --clean --onedir \
+            --name="${{ env.BINARY_NAME }}" \
+            --distpath=dist \
+            --workpath=build \
+            --hidden-import=ytmusicapi \
+            --hidden-import=grpc \
+            --hidden-import=grpc._cython \
+            --hidden-import=grpc._cython.cygrpc \
+            --hidden-import=google.protobuf \
+            --hidden-import=google.protobuf.internal \
+            --hidden-import=yt_dlp \
+            --hidden-import=yt_dlp.extractor \
+            --hidden-import=yt_dlp.extractor.youtubetab \
+            --hidden-import=yt_dlp.extractor.youtube \
+            --hidden-import=requests \
+            --hidden-import=certifi \
+            --hidden-import=charset_normalizer \
+            --hidden-import=idna \
+            --hidden-import=urllib3 \
+            --hidden-import=generated \
+            --hidden-import=handlers \
+            --collect-all=ytmusicapi \
+            --collect-all=grpc \
+            --collect-all=google.protobuf \
+            --collect-all=yt_dlp \
+            --collect-all=certifi \
+            --add-data="generated:generated" \
+            --add-data="certifi/cacert.pem:certifi" \
+            --add-binary=".tools/bin/node:." \
+            --exclude-module=tkinter \
+            --exclude-module=unittest \
+            --exclude-module=test \
+            --exclude-module=grpc_tools \
+            --exclude-module=lib2to3 \
+            --exclude-module=pydoc \
+            --exclude-module=doctest \
+            ${{ env.DEBUG_FLAG }} \
             server.py
-
-          echo "Build complete. dist/ contents:"
-          ls -lh dist/
-
-      # -----------------------------------------------------------------------
-      # 9. Download NSSM (Non-Sucking Service Manager) for service registration
-      #    NSSM wraps any executable as a Windows service without code changes.
-      # -----------------------------------------------------------------------
       - name: Download NSSM
         shell: powershell
         run: |
-          $nssmUrl  = "https://nssm.cc/release/nssm-2.24.zip"
-          $nssmZip  = "nssm.zip"
-          $nssmDir  = "nssm-extracted"
+          $nssmUrl = "https://nssm.cc/release/nssm-2.24.zip"
+          $nssmZip = "nssm.zip"
+          $nssmDir = "nssm-extracted"
           Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
           Expand-Archive -Path $nssmZip -DestinationPath $nssmDir -Force
-          # Choose the correct arch sub-directory.
-          if ("${{ matrix.arch }}" -eq "amd64") {
-            $nssmBin = "win64"
-          } else {
-            $nssmBin = "win64"   # NSSM 2.24 ships only win64; ARM64 runs it via WoW64
-          }
-          Copy-Item "$nssmDir\nssm-2.24\$nssmBin\nssm.exe" -Destination "${{ env.PLUGIN_DIR }}\dist\nssm.exe"
-          Write-Host "NSSM copied to ${{ env.PLUGIN_DIR }}\dist\nssm.exe"
-
-      # -----------------------------------------------------------------------
-      # 10. Write the Inno Setup script
-      #
-      #     The installer:
-      #       • Copies the binary + NSSM to Program Files\gozik\plugins\ytmusic\
-      #       • Registers a Windows service "GozikYTMusicPlugin" via NSSM so the
-      #         daemon starts automatically on boot without requiring a user login.
-      #       • [UninstallRun] stops and removes the service on uninstall.
-      # -----------------------------------------------------------------------
+          $nssmBin = "win64"
+          New-Item -ItemType Directory -Path "..\${{ env.PLUGIN_DIR }}\dist\${{ env.BINARY_NAME }}" -Force | Out-Null
+          Copy-Item "$nssmDir\nssm-2.24\$nssmBin\nssm.exe" -Destination "..\${{ env.PLUGIN_DIR }}\dist\${{ env.BINARY_NAME }}\nssm.exe"
       - name: Write Inno Setup script
         shell: powershell
         env:
-          VERSION: ${{ steps.version.outputs.ver }}
           ARCH_SETTING: ${{ matrix.installer-arch }}
           ARTIFACT_SUFFIX: ${{ matrix.artifact-suffix }}
         run: |
-          $ver  = $env:VERSION
+          $ver = "${{ github.ref_name }}"
+          if ($ver -notmatch '^plugin-v') { $ver = "0.0.0-${{ github.sha }}".Substring(0,13) }
           $arch = $env:ARCH_SETTING
           $name = $env:ARTIFACT_SUFFIX
-          $iss  = @"
-          ; Inno Setup script — gozik YouTube Music Plugin ($arch)
-          ; Auto-generated by package-plugins.yml — do not edit manually.
-
+          $iss = @"
+          ; Inno Setup script -- gozik YouTube Music Plugin ($arch)
           #define AppName     "gozik YouTube Music Plugin"
           #define AppVersion  "$ver"
           #define AppPublisher "gosuda"
@@ -368,348 +198,158 @@ jobs:
           Name: "english"; MessagesFile: "compiler:Default.isl"
 
           [Files]
-          ; Main plugin binary (Nuitka onefile)
-          Source: "${{ env.PLUGIN_DIR }}\dist\{#BinaryName}"; DestDir: "{app}"; Flags: ignoreversion
-          ; NSSM service manager
-          Source: "${{ env.PLUGIN_DIR }}\dist\nssm.exe"; DestDir: "{app}"; Flags: ignoreversion
-
-          [Icons]
-          ; No Start Menu shortcut — this is a background daemon, not a user app.
+          Source: "..\${{ env.PLUGIN_DIR }}\dist\${{ env.BINARY_NAME }}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
           [Run]
-          ; Step 1: Stop any previously running instance of the service.
-          Filename: "{app}\nssm.exe"; Parameters: "stop {#ServiceName}"; \
-            Flags: runhidden waituntilterminated; \
-            StatusMsg: "Stopping existing service (if any)..."; \
-            Check: ServiceExists
-
-          ; Step 2: Remove the old service registration before re-creating it.
-          Filename: "{app}\nssm.exe"; Parameters: "remove {#ServiceName} confirm"; \
-            Flags: runhidden waituntilterminated; \
-            StatusMsg: "Removing old service registration..."; \
-            Check: ServiceExists
-
-          ; Step 3: Install the binary as a Windows service.
-          Filename: "{app}\nssm.exe"; Parameters: "install {#ServiceName} ""{app}\{#BinaryName}"" ""--port 50051"""; \
-            Flags: runhidden waituntilterminated; \
-            StatusMsg: "Registering gRPC daemon as a Windows service..."
-
-          ; Step 4: Set the service display name and description.
-          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} DisplayName ""{#AppName}"""; \
-            Flags: runhidden waituntilterminated
-
-          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Description ""{#ServiceDesc}"""; \
-            Flags: runhidden waituntilterminated
-
-          ; Step 5: Configure automatic startup type (starts on every system boot).
-          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Start SERVICE_AUTO_START"; \
-            Flags: runhidden waituntilterminated; \
-            StatusMsg: "Configuring service for automatic startup..."
-
-          ; Step 6: Set the service account to LocalSystem (no user login required).
-          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} ObjectName LocalSystem"; \
-            Flags: runhidden waituntilterminated
-
-          ; Step 7: Start the service immediately after installation.
-          Filename: "{app}\nssm.exe"; Parameters: "start {#ServiceName}"; \
-            Flags: runhidden waituntilterminated; \
-            StatusMsg: "Starting gRPC daemon service..."
+          Filename: "{app}\nssm.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden waituntilterminated; StatusMsg: "Stopping existing service (if any)..."; Check: ServiceExists
+          Filename: "{app}\nssm.exe"; Parameters: "remove {#ServiceName} confirm"; Flags: runhidden waituntilterminated; StatusMsg: "Removing old service registration..."; Check: ServiceExists
+          Filename: "{app}\nssm.exe"; Parameters: "install {#ServiceName} ""{app}\{#BinaryName}"" ""--port 50051"""; Flags: runhidden waituntilterminated; StatusMsg: "Registering gRPC daemon as a Windows service..."
+          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} DisplayName ""{#AppName}"""; Flags: runhidden waituntilterminated
+          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Description ""{#ServiceDesc}"""; Flags: runhidden waituntilterminated
+          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Start SERVICE_AUTO_START"; Flags: runhidden waituntilterminated; StatusMsg: "Configuring service for automatic startup..."
+          Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} ObjectName LocalSystem"; Flags: runhidden waituntilterminated
+          Filename: "{app}\nssm.exe"; Parameters: "start {#ServiceName}"; Flags: runhidden waituntilterminated; StatusMsg: "Starting gRPC daemon service..."
 
           [UninstallRun]
-          ; Stop the service before uninstalling files.
-          Filename: "{app}\nssm.exe"; Parameters: "stop {#ServiceName}"; \
-            Flags: runhidden waituntilterminated
-
-          ; Remove the service registration entirely.
-          Filename: "{app}\nssm.exe"; Parameters: "remove {#ServiceName} confirm"; \
-            Flags: runhidden waituntilterminated
+          Filename: "{app}\nssm.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden waituntilterminated
+          Filename: "{app}\nssm.exe"; Parameters: "remove {#ServiceName} confirm"; Flags: runhidden waituntilterminated
 
           [Code]
-          // ServiceExists() — returns true if the NSSM-managed service is already registered.
           function ServiceExists: Boolean;
           var
             ResultCode: Integer;
           begin
-            Exec(ExpandConstant('{app}\nssm.exe'), 'status {#ServiceName}', '',
-                 SW_HIDE, ewWaitUntilTerminated, ResultCode);
+            Exec(ExpandConstant('{app}\nssm.exe'), 'status {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
             Result := (ResultCode = 0);
           end;
           "@
           New-Item -ItemType Directory -Path "installer" -Force | Out-Null
           Set-Content -Path "setup.iss" -Value $iss -Encoding UTF8
-          Write-Host "Inno Setup script written to setup.iss"
-
-      # -----------------------------------------------------------------------
-      # 11. Install Inno Setup and compile the installer
-      # -----------------------------------------------------------------------
       - name: Install Inno Setup
         if: matrix.arch == 'amd64'
         shell: powershell
-        run: |
-          choco install innosetup --version ${{ env.INNO_SETUP_VERSION }} --no-progress -y
-
+        run: choco install innosetup --version ${{ env.INNO_SETUP_VERSION }} --no-progress -y
       - name: Install Inno Setup (ARM64 via direct download)
         if: matrix.arch == 'arm64'
         shell: powershell
         run: |
-          # On ARM64 runners choco may not be available; download directly.
           $isUrl = "https://jrsoftware.org/download.php/is.exe"
           Invoke-WebRequest -Uri $isUrl -OutFile "innosetup_installer.exe" -UseBasicParsing
-          Start-Process -FilePath "innosetup_installer.exe" `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
-            -Wait -NoNewWindow
-
+          Start-Process -FilePath "innosetup_installer.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -NoNewWindow
       - name: Compile Inno Setup installer
         shell: powershell
         run: |
-          # Locate ISCC.exe — path differs between choco and direct installs.
           $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          } else {
-            $iscc = $iscc.Source
-          }
-          Write-Host "Using ISCC: $iscc"
+          if (-not $iscc) { $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" } else { $iscc = $iscc.Source }
           & "$iscc" "setup.iss"
-          Write-Host "Installer contents:"
-          Get-ChildItem -Path "installer" | Format-Table Name, Length
-
-      # -----------------------------------------------------------------------
-      # 12. Verify and record the installer SHA-256
-      # -----------------------------------------------------------------------
       - name: Verify installer
         id: installer-meta
         shell: powershell
-        env:
-          ARTIFACT_SUFFIX: ${{ matrix.artifact-suffix }}
         run: |
           $installer = Get-ChildItem -Path "installer" -Filter "*.exe" | Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "No installer .exe found in installer/"
-            exit 1
-          }
+          if (-not $installer) { Write-Error "No installer .exe found"; exit 1 }
           $hash = (Get-FileHash -Path $installer.FullName -Algorithm SHA256).Hash.ToLower()
-          $sizeMB = [math]::Round($installer.Length / 1MB, 2)
-          Write-Host "Installer: $($installer.Name)"
-          Write-Host "Size     : $sizeMB MB"
-          Write-Host "SHA-256  : $hash"
-          echo "installer-path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
-          echo "installer-name=$($installer.Name)"     >> $env:GITHUB_OUTPUT
-          echo "sha256=$hash"                          >> $env:GITHUB_OUTPUT
-
-      # -----------------------------------------------------------------------
-      # 13. Upload the installer as a CI artefact
-      # -----------------------------------------------------------------------
-      - name: Upload installer artefact
-        uses: actions/upload-artifact@v4
+          echo "installer-name=$($installer.Name)" >> $env:GITHUB_OUTPUT
+          echo "sha256=$hash" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
         with:
-          name: "ytmusic-plugin-${{ matrix.artifact-suffix }}"
-          path: "installer/${{ steps.installer-meta.outputs.installer-name }}"
+          name: ytmusic-plugin-${{ matrix.artifact-suffix }}
+          path: installer/${{ steps.installer-meta.outputs.installer-name }}
           retention-days: 30
           if-no-files-found: error
 
-  # ===========================================================================
-  # JOB: build-macos
-  #
-  # Targets macOS ARM64 (Apple Silicon) on macos-latest (= macos-14, M1 hosted).
-  # Produces a .app bundle inside a .dmg disk image.
-  # A LaunchAgent plist is bundled so the daemon registers on login after the
-  # user opens the .dmg and drags the app to /Applications.
-  # ===========================================================================
   build-macos:
-    name: "macOS ARM64 — Nuitka + create-dmg"
+    name: 'macOS ARM64 — PyInstaller + create-dmg'
     runs-on: macos-latest
     timeout-minutes: 90
-
     steps:
-      # -----------------------------------------------------------------------
-      # 1. Checkout
-      # -----------------------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # -----------------------------------------------------------------------
-      # 2. Set up Python — use python.org distribution for --enable-shared
-      #    The Homebrew Python has libpython as a dylib; the python.org
-      #    universal2 wheel does not. setup-python@v5 pulls the python.org
-      #    build which ships libpython*.dylib.
-      # -----------------------------------------------------------------------
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Clone plugin repository
+        run: |
+          cd "${{ github.workspace }}"
+          cd ..
+          git clone --depth 1 "${{ env.PLUGIN_REPO }}" "${{ env.PLUGIN_DIR }}"
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: ${{ env.PLUGIN_DIR }}/requirements.txt
-
-      # -----------------------------------------------------------------------
-      # 3. Install system-level build tools
-      # -----------------------------------------------------------------------
-      - name: Install macOS build tools
-        run: |
-          brew install ccache patchelf create-dmg
-          # patchelf on macOS is provided by the formula; some environments
-          # may not have it. It is required by Nuitka onefile on macOS.
-
-      # -----------------------------------------------------------------------
-      # 4. Install Python dependencies
-      # -----------------------------------------------------------------------
+      - name: Install build tools
+        run: brew install create-dmg
       - name: Install Python dependencies
-        working-directory: ${{ env.PLUGIN_DIR }}
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install "nuitka==${{ env.NUITKA_VERSION }}"
-          pip install ordered-set zstandard
-
-      # -----------------------------------------------------------------------
-      # 5. Generate protobuf stubs
-      # -----------------------------------------------------------------------
+          pip install -r "../${{ env.PLUGIN_DIR }}/requirements.txt"
+          pip install "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
       - name: Generate protobuf stubs
-        working-directory: ${{ env.PLUGIN_DIR }}
         run: |
-          GRPC_TOOLS_PROTO="$(python -c "import grpc_tools,os; print(os.path.join(os.path.dirname(grpc_tools.__file__),'_proto'))")"
-          PROTO_SRC="../gozik/api/music/v1"
-          OUT_DIR="generated"
-          mkdir -p "$OUT_DIR"
-          touch "$OUT_DIR/__init__.py"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/music_provider.proto"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/provider_link.proto"
-          for f in "$OUT_DIR"/*_pb2_grpc.py; do
-            sed -i '' 's/^import \(.*_pb2\) as/from generated import \1 as/' "$f"
-          done
-          echo "Proto stubs generated:"
-          ls -1 "$OUT_DIR"
-
-      # -----------------------------------------------------------------------
-      # 6. Derive version
-      # -----------------------------------------------------------------------
-      - name: Derive version
-        id: version
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/plugin-v* ]]; then
-            VER="${GITHUB_REF_NAME#plugin-v}"
-          else
-            VER="0.0.0-$(git rev-parse --short HEAD)"
-          fi
-          echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "Version: $VER"
-
-      # -----------------------------------------------------------------------
-      # 7. Resolve certifi path
-      # -----------------------------------------------------------------------
-      - name: Resolve certifi path
-        id: certifi
-        run: |
-          CERTIFI_PEM="$(python -c 'import certifi; print(certifi.where())')"
-          echo "pem=$CERTIFI_PEM" >> "$GITHUB_OUTPUT"
-
-      # -----------------------------------------------------------------------
-      # 8. Nuitka compilation (macOS)
-      #
-      #    --macos-create-app-bundle  wraps the binary inside a .app structure
-      #    --macos-app-name           sets CFBundleName in the generated plist
-      #    --macos-app-version        sets CFBundleShortVersionString
-      # -----------------------------------------------------------------------
-      - name: Compile with Nuitka
-        working-directory: ${{ env.PLUGIN_DIR }}
+          cd "${{ github.workspace }}"
+          cd "../${{ env.PLUGIN_DIR }}"
+          bash codegen.sh
+      - name: Build with PyInstaller
         env:
-          CERTIFI_PEM: ${{ steps.certifi.outputs.pem }}
-          VERSION: ${{ steps.version.outputs.ver }}
+          DEBUG_FLAG: ${{ github.event.inputs.debug_build == 'true' && '--debug=all' || '' }}
         run: |
-          JOBS=$(python -c "import os; print(os.cpu_count() or 4)")
-          mkdir -p dist
-
-          # Prepend ccache to PATH so Nuitka uses it automatically.
-          export PATH="$(brew --prefix ccache)/libexec:$PATH"
-
-          python -m nuitka \
-            --mode=onefile \
-            --onefile-tempdir-spec="{CACHE_DIR}/gozik/ytmusic-server/{VERSION}" \
-            --output-dir=dist \
-            --output-filename="${{ env.BINARY_NAME }}" \
-            --macos-create-app-bundle \
-            --macos-app-name="gozik YouTube Music Plugin" \
-            --macos-app-version="${{ steps.version.outputs.ver }}" \
-            --include-package=ytmusicapi \
-            --include-package=grpc \
-            --include-package=grpc._cython \
-            --include-package=google.protobuf \
-            --include-package=google.protobuf.internal \
-            --include-package=yt_dlp \
-            --include-package=yt_dlp.extractor \
-            --include-package=requests \
-            --include-package=certifi \
-            --include-package=charset_normalizer \
-            --include-package=idna \
-            --include-package=urllib3 \
-            --include-package=generated \
-            --include-package=handlers \
-            --include-package-data=ytmusicapi \
-            --include-package-data=grpc \
-            "--include-data-files=${CERTIFI_PEM}=certifi/cacert.pem" \
-            --include-data-dir=generated=generated \
-            --nofollow-import-to=tkinter \
-            --nofollow-import-to=unittest \
-            --nofollow-import-to=test \
-            --nofollow-import-to=distutils \
-            --nofollow-import-to=grpc_tools \
-            --nofollow-import-to=lib2to3 \
-            --nofollow-import-to=pydoc \
-            --nofollow-import-to=doctest \
-            --python-flag=no_site \
-            --python-flag=no_warnings \
-            --enable-plugins=anti-bloat \
-            --assume-yes-for-downloads \
-            --remove-output \
-            --lto=yes \
-            "--jobs=${JOBS}" \
+          cd "${{ github.workspace }}"
+          cd "../${{ env.PLUGIN_DIR }}"
+          mkdir -p certifi
+          python -c "import certifi, shutil; shutil.copy(certifi.where(), 'certifi/cacert.pem')"
+          pyinstaller \
+            --noconfirm --clean --onedir \
+            --name="${{ env.BINARY_NAME }}" \
+            --distpath=dist \
+            --workpath=build \
+            --hidden-import=ytmusicapi \
+            --hidden-import=grpc \
+            --hidden-import=grpc._cython \
+            --hidden-import=grpc._cython.cygrpc \
+            --hidden-import=google.protobuf \
+            --hidden-import=google.protobuf.internal \
+            --hidden-import=yt_dlp \
+            --hidden-import=yt_dlp.extractor \
+            --hidden-import=yt_dlp.extractor.youtubetab \
+            --hidden-import=yt_dlp.extractor.youtube \
+            --hidden-import=requests \
+            --hidden-import=certifi \
+            --hidden-import=charset_normalizer \
+            --hidden-import=idna \
+            --hidden-import=urllib3 \
+            --hidden-import=generated \
+            --hidden-import=handlers \
+            --collect-all=ytmusicapi \
+            --collect-all=grpc \
+            --collect-all=google.protobuf \
+            --collect-all=yt_dlp \
+            --collect-all=certifi \
+            --add-data="generated:generated" \
+            --add-data="certifi/cacert.pem:certifi" \
+            --exclude-module=tkinter \
+            --exclude-module=unittest \
+            --exclude-module=test \
+            --exclude-module=grpc_tools \
+            --exclude-module=lib2to3 \
+            --exclude-module=pydoc \
+            --exclude-module=doctest \
+            ${{ env.DEBUG_FLAG }} \
             server.py
-
-          echo "dist/ contents:"
-          ls -lh dist/
-
-      # -----------------------------------------------------------------------
-      # 9. Assemble .app bundle with LaunchAgent daemon plist
-      #
-      #    Nuitka --macos-create-app-bundle produces:
-      #      dist/gozik-yt-music-server.app/
-      #        Contents/MacOS/gozik-yt-music-server  (the binary)
-      #        Contents/Info.plist
-      #
-      #    We add:
-      #      • A LaunchAgent plist in Contents/Resources/
-      #      • A post-open shell script that copies the plist into
-      #        ~/Library/LaunchAgents/ and calls launchctl load to register
-      #        the daemon for the current user on every login.
-      # -----------------------------------------------------------------------
-      - name: Assemble .app bundle with LaunchAgent
-        env:
-          VERSION: ${{ steps.version.outputs.ver }}
+      - name: Assemble .app bundle
         run: |
-          APP_PATH="${{ env.PLUGIN_DIR }}/dist/${{ env.BINARY_NAME }}.app"
-          MACOS_DIR="${APP_PATH}/Contents/MacOS"
-          RES_DIR="${APP_PATH}/Contents/Resources"
-          mkdir -p "$RES_DIR"
-
-          # ------------------------------------------------------------------
-          # Write the LaunchAgent plist.
-          # KeepAlive=true ensures launchd restarts the daemon if it crashes.
-          # RunAtLoad=true starts it immediately when the plist is loaded.
-          # ------------------------------------------------------------------
-          PLIST_NAME="com.gosuda.gozik.ytmusic.plist"
-          cat > "${RES_DIR}/${PLIST_NAME}" <<PLIST_EOF
+          cd "${{ github.workspace }}"
+          cd ..
+          APP="GozikYTMusicPlugin.app"
+          BUNDLE_DIR="${{ env.PLUGIN_DIR }}/dist/${{ env.BINARY_NAME }}"
+          MACOS_DIR="$APP/Contents/MacOS"
+          RES_DIR="$APP/Contents/Resources"
+          mkdir -p "$MACOS_DIR" "$RES_DIR"
+          cp -a "$BUNDLE_DIR" "$MACOS_DIR/${{ env.BINARY_NAME }}"
+          cat > "$MACOS_DIR/gozik-ytmusic-launcher.sh" <<'LAUNCHER_EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          exec "$DIR/${{ env.BINARY_NAME }}/${{ env.BINARY_NAME }}" "$@"
+          LAUNCHER_EOF
+          chmod +x "$MACOS_DIR/gozik-ytmusic-launcher.sh"
+          cat > "$RES_DIR/com.gosuda.gozik.ytmusic.plist" <<PLIST_EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -718,7 +358,7 @@ jobs:
             <string>com.gosuda.gozik.ytmusic</string>
             <key>ProgramArguments</key>
             <array>
-              <string>/Applications/${{ env.BINARY_NAME }}.app/Contents/MacOS/${{ env.BINARY_NAME }}</string>
+              <string>/Applications/GozikYTMusicPlugin.app/Contents/MacOS/gozik-ytmusic-launcher.sh</string>
               <string>--port</string>
               <string>${{ env.DAEMON_PORT }}</string>
             </array>
@@ -733,19 +373,8 @@ jobs:
           </dict>
           </plist>
           PLIST_EOF
-
-          # ------------------------------------------------------------------
-          # Write the post-install helper script.
-          # The user is instructed to run this once after dragging the app
-          # to /Applications. It registers the LaunchAgent for the current
-          # user session without requiring root privileges.
-          # ------------------------------------------------------------------
-          cat > "${MACOS_DIR}/install-daemon.sh" <<'HELPER_EOF'
+          cat > "$MACOS_DIR/install-daemon.sh" <<'HELPER_EOF'
           #!/bin/bash
-          # install-daemon.sh — Register the gozik YouTube Music Plugin daemon.
-          # Run this script once after installing the app to /Applications.
-          # It copies the LaunchAgent plist to ~/Library/LaunchAgents/ and
-          # loads it immediately so the plugin starts at login.
           set -euo pipefail
           SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
           APP_RES="$(cd "${SCRIPT_DIR}/../Resources" && pwd)"
@@ -754,148 +383,117 @@ jobs:
           PLIST_DST="${LAUNCH_AGENTS}/com.gosuda.gozik.ytmusic.plist"
           mkdir -p "$LAUNCH_AGENTS"
           cp -f "$PLIST_SRC" "$PLIST_DST"
-          # Unload first to avoid "service already loaded" error on re-install.
           launchctl unload "$PLIST_DST" 2>/dev/null || true
           launchctl load -w "$PLIST_DST"
           echo "gozik YouTube Music daemon registered and started."
-          echo "It will start automatically on every login."
           HELPER_EOF
-          chmod +x "${MACOS_DIR}/install-daemon.sh"
-
-          # ------------------------------------------------------------------
-          # Write the uninstall helper.
-          # ------------------------------------------------------------------
-          cat > "${MACOS_DIR}/uninstall-daemon.sh" <<'UNINSTALL_EOF'
+          chmod +x "$MACOS_DIR/install-daemon.sh"
+          cat > "$MACOS_DIR/uninstall-daemon.sh" <<'UNINSTALL_EOF'
           #!/bin/bash
-          # uninstall-daemon.sh — Remove the gozik YouTube Music Plugin daemon.
           set -euo pipefail
           PLIST_DST="${HOME}/Library/LaunchAgents/com.gosuda.gozik.ytmusic.plist"
           launchctl unload "$PLIST_DST" 2>/dev/null || true
           rm -f "$PLIST_DST"
           echo "gozik YouTube Music daemon unregistered."
           UNINSTALL_EOF
-          chmod +x "${MACOS_DIR}/uninstall-daemon.sh"
-
-          echo "App bundle contents:"
-          find "$APP_PATH" -type f | sort
-
-      # -----------------------------------------------------------------------
-      # 10. Create DMG disk image
-      # -----------------------------------------------------------------------
+          chmod +x "$MACOS_DIR/uninstall-daemon.sh"
+          cat > "$APP/Contents/Info.plist" <<INFO_EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>gozik-ytmusic-launcher.sh</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.gosuda.gozik.ytmusic</string>
+            <key>CFBundleName</key>
+            <string>gozik YouTube Music Plugin</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ github.ref_name }}</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.run_number }}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          INFO_EOF
       - name: Create DMG
-        env:
-          VERSION: ${{ steps.version.outputs.ver }}
         run: |
-          APP_PATH="${{ env.PLUGIN_DIR }}/dist/${{ env.BINARY_NAME }}.app"
-          DMG_NAME="gozik-ytmusic-plugin-macos-arm64-${{ steps.version.outputs.ver }}.dmg"
-
+          cd "${{ github.workspace }}"
+          cd ..
+          APP="GozikYTMusicPlugin.app"
+          DMG_NAME="gozik-ytmusic-plugin-macos-arm64-${{ github.ref_name }}.dmg"
           create-dmg \
             --volname "gozik YouTube Music Plugin" \
-            --volicon "${APP_PATH}/Contents/Resources/.VolumeIcon.icns" 2>/dev/null \
             --window-pos 200 150 \
             --window-size 640 480 \
             --icon-size 128 \
-            --icon "${{ env.BINARY_NAME }}.app" 160 240 \
-            --hide-extension "${{ env.BINARY_NAME }}.app" \
+            --icon "$APP" 160 240 \
+            --hide-extension "$APP" \
             --app-drop-link 480 240 \
             --background-color "#1a1a2e" \
             --no-internet-enable \
-            "${DMG_NAME}" \
-            "$APP_PATH" \
+            "$DMG_NAME" "$APP" \
           || \
           create-dmg \
             --volname "gozik YouTube Music Plugin" \
             --window-pos 200 150 \
             --window-size 640 480 \
             --icon-size 128 \
-            --icon "${{ env.BINARY_NAME }}.app" 160 240 \
+            --icon "$APP" 160 240 \
             --app-drop-link 480 240 \
-            "${DMG_NAME}" \
-            "$APP_PATH"
-
-          echo "DMG created: ${DMG_NAME}"
-          ls -lh "${DMG_NAME}"
-          sha256sum "${DMG_NAME}"
-
-      # -----------------------------------------------------------------------
-      # 11. Upload DMG artefact
-      # -----------------------------------------------------------------------
-      - name: Upload DMG artefact
-        uses: actions/upload-artifact@v4
+            "$DMG_NAME" "$APP"
+          ls -lh "$DMG_NAME"
+          sha256sum "$DMG_NAME"
+      - name: Stage DMG for upload
+        run: |
+          cd "${{ github.workspace }}"
+          mkdir -p artifacts
+          cp ../*.dmg artifacts/ || true
+      - uses: actions/upload-artifact@v4
         with:
-          name: "ytmusic-plugin-macos-arm64"
-          path: "gozik-ytmusic-plugin-macos-arm64-*.dmg"
+          name: ytmusic-plugin-macos-arm64
+          path: artifacts/*.dmg
           retention-days: 30
           if-no-files-found: error
 
-  # ===========================================================================
-  # JOB: build-linux-amd64
-  #
-  # Native compilation on ubuntu-latest (x86_64). Produces an AppImage using
-  # the project's existing build_appimage.sh pattern adapted for the plugin.
-  # systemd user-unit is embedded in the AppDir and AppRun installs it.
-  # ===========================================================================
   build-linux-amd64:
-    name: "Linux AMD64 — Nuitka + AppImage"
+    name: 'Linux AMD64 — PyInstaller + AppImage'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Clone plugin repository
+        run: |
+          cd "${{ github.workspace }}"
+          cd ..
+          git clone --depth 1 "${{ env.PLUGIN_REPO }}" "${{ env.PLUGIN_DIR }}"
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: ${{ env.PLUGIN_DIR }}/requirements.txt
-
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ccache \
-            patchelf \
-            squashfs-tools \
-            file \
-            binutils \
-            libfuse2
-
+          sudo apt-get install -y ccache patchelf squashfs-tools file binutils libfuse2
       - name: Install Python dependencies
-        working-directory: ${{ env.PLUGIN_DIR }}
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install "nuitka==${{ env.NUITKA_VERSION }}"
-          pip install ordered-set zstandard
-
-      - name: Generate protobuf stubs
-        working-directory: ${{ env.PLUGIN_DIR }}
+          pip install -r "../${{ env.PLUGIN_DIR }}/requirements.txt"
+          pip install "pyinstaller==${{ env.PYINSTALLER_VERSION }}"
+      - name: Build plugin with package.sh
+        env:
+          YTDLP_SKIP_NIGHTLY: '0'
         run: |
-          GRPC_TOOLS_PROTO="$(python -c "import grpc_tools,os; print(os.path.join(os.path.dirname(grpc_tools.__file__),'_proto'))")"
-          PROTO_SRC="../gozik/api/music/v1"
-          OUT_DIR="generated"
-          mkdir -p "$OUT_DIR"
-          touch "$OUT_DIR/__init__.py"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/music_provider.proto"
-          python -m grpc_tools.protoc \
-            --proto_path="$PROTO_SRC" \
-            --proto_path="$GRPC_TOOLS_PROTO" \
-            --python_out="$OUT_DIR" \
-            --grpc_python_out="$OUT_DIR" \
-            "$PROTO_SRC/provider_link.proto"
-          for f in "$OUT_DIR"/*_pb2_grpc.py; do
-            sed -i 's/^import \(.*_pb2\) as/from generated import \1 as/' "$f"
-          done
-
+          cd "${{ github.workspace }}"
+          cd "../${{ env.PLUGIN_DIR }}"
+          bash package.sh
       - name: Derive version
         id: version
         run: |
@@ -905,78 +503,20 @@ jobs:
             VER="0.0.0-$(git rev-parse --short HEAD)"
           fi
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve certifi path
-        id: certifi
-        run: |
-          echo "pem=$(python -c 'import certifi; print(certifi.where())')" >> "$GITHUB_OUTPUT"
-
-      - name: Compile with Nuitka (AMD64)
-        working-directory: ${{ env.PLUGIN_DIR }}
-        env:
-          CERTIFI_PEM: ${{ steps.certifi.outputs.pem }}
-        run: |
-          JOBS=$(nproc)
-          mkdir -p dist
-          export PATH="/usr/lib/ccache:$PATH"
-
-          python -m nuitka \
-            --mode=onefile \
-            --onefile-tempdir-spec="{CACHE_DIR}/gozik/ytmusic-server/{VERSION}" \
-            --output-dir=dist \
-            --output-filename="${{ env.BINARY_NAME }}" \
-            --include-package=ytmusicapi \
-            --include-package=grpc \
-            --include-package=grpc._cython \
-            --include-package=google.protobuf \
-            --include-package=google.protobuf.internal \
-            --include-package=yt_dlp \
-            --include-package=yt_dlp.extractor \
-            --include-package=requests \
-            --include-package=certifi \
-            --include-package=charset_normalizer \
-            --include-package=idna \
-            --include-package=urllib3 \
-            --include-package=generated \
-            --include-package=handlers \
-            --include-package-data=ytmusicapi \
-            --include-package-data=grpc \
-            "--include-data-files=${CERTIFI_PEM}=certifi/cacert.pem" \
-            --include-data-dir=generated=generated \
-            --nofollow-import-to=tkinter \
-            --nofollow-import-to=unittest \
-            --nofollow-import-to=test \
-            --nofollow-import-to=distutils \
-            --nofollow-import-to=grpc_tools \
-            --nofollow-import-to=lib2to3 \
-            --nofollow-import-to=pydoc \
-            --nofollow-import-to=doctest \
-            --python-flag=no_site \
-            --python-flag=no_warnings \
-            --enable-plugins=anti-bloat \
-            --assume-yes-for-downloads \
-            --remove-output \
-            --lto=yes \
-            "--jobs=${JOBS}" \
-            server.py
-
       - name: Assemble AppDir (AMD64)
         env:
-          ARCH: amd64
-          APPIMAGE_ARCH: x86_64
           VERSION: ${{ steps.version.outputs.ver }}
         run: |
+          cd "${{ github.workspace }}"
+          cd ..
           APPDIR="appdir-amd64"
           mkdir -p "${APPDIR}/usr/bin"
           mkdir -p "${APPDIR}/usr/share/applications"
           mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
           mkdir -p "${APPDIR}/usr/lib/systemd/user"
-
-          # Copy the Nuitka onefile binary.
-          cp "${{ env.PLUGIN_DIR }}/dist/${{ env.BINARY_NAME }}" "${APPDIR}/usr/bin/"
-          chmod +x "${APPDIR}/usr/bin/${{ env.BINARY_NAME }}"
-
-          # Desktop entry (background app — no display required).
+          BUNDLE_DIR="${{ env.PLUGIN_DIR }}/dist/${{ env.BINARY_NAME }}"
+          cp -a "$BUNDLE_DIR" "${APPDIR}/usr/bin/${{ env.BINARY_NAME }}"
+          chmod -R +x "${APPDIR}/usr/bin/${{ env.BINARY_NAME }}"
           cat > "${APPDIR}/usr/share/applications/gozik-ytmusic.desktop" <<DESKTOP_EOF
           [Desktop Entry]
           Type=Application
@@ -988,16 +528,9 @@ jobs:
           NoDisplay=true
           X-AppImage-Version=${VERSION}
           DESKTOP_EOF
-
-          # Placeholder icon (1×1 px PNG encoded as base64).
-          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' \
-            | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
-
-          # Symlinks required by AppImageTool at root of AppDir.
+          printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
           ln -sf usr/share/applications/gozik-ytmusic.desktop "${APPDIR}/gozik-ytmusic.desktop"
           ln -sf usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png "${APPDIR}/gozik-ytmusic.png"
-
-          # systemd user-unit bundled inside the AppImage.
           cat > "${APPDIR}/usr/lib/systemd/user/gozik-ytmusic.service" <<UNIT_EOF
           [Unit]
           Description=${{ env.DAEMON_DESCRIPTION }}
@@ -1005,7 +538,7 @@ jobs:
 
           [Service]
           Type=simple
-          ExecStart=%h/.local/share/gozik/ytmusic/${{ env.BINARY_NAME }} --port ${{ env.DAEMON_PORT }}
+          ExecStart=%h/.local/share/gozik/ytmusic/${{ env.BINARY_NAME }}/${{ env.BINARY_NAME }} --port ${{ env.DAEMON_PORT }}
           Restart=on-failure
           RestartSec=5
           StandardOutput=journal
@@ -1014,133 +547,96 @@ jobs:
           [Install]
           WantedBy=default.target
           UNIT_EOF
-
-          # AppRun — the AppImage entry point.
-          # On first launch it:
-          #   1. Copies the binary to ~/.local/share/gozik/ytmusic/
-          #   2. Installs the systemd unit to ~/.config/systemd/user/
-          #   3. Enables and starts the unit via systemctl --user
-          #   4. On subsequent launches detects the installed unit and exits quickly.
           cat > "${APPDIR}/AppRun" <<'APPRUN_EOF'
           #!/bin/bash
-          # AppRun — gozik YouTube Music Plugin AppImage entry point.
-          # Installs the binary and systemd daemon on first launch, then starts the server.
           set -euo pipefail
           HERE="$(dirname "$(readlink -f "${0}")")"
-          BINARY_NAME="gozik-yt-music-server"
-          INSTALL_DIR="${HOME}/.local/share/gozik/ytmusic"
-          SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
-          UNIT_NAME="gozik-ytmusic.service"
+          BINARY_NAME='gozik-yt-music-server'
+          INSTALL_DIR='${HOME}/.local/share/gozik/ytmusic'
+          SYSTEMD_USER_DIR='${HOME}/.config/systemd/user'
+          UNIT_NAME='gozik-ytmusic.service'
           UNIT_SRC="${HERE}/usr/lib/systemd/user/${UNIT_NAME}"
           UNIT_DST="${SYSTEMD_USER_DIR}/${UNIT_NAME}"
-          BINARY_SRC="${HERE}/usr/bin/${BINARY_NAME}"
-          BINARY_DST="${INSTALL_DIR}/${BINARY_NAME}"
-
-          # Create required directories.
+          BUNDLE_SRC="${HERE}/usr/bin/${BINARY_NAME}"
+          BUNDLE_DST="${INSTALL_DIR}/${BINARY_NAME}"
           mkdir -p "${INSTALL_DIR}" "${SYSTEMD_USER_DIR}"
-
-          # Copy binary to the stable install location if absent or outdated.
-          if [[ ! -f "${BINARY_DST}" ]] || \
-             ! cmp -s "${BINARY_SRC}" "${BINARY_DST}"; then
-            echo "[gozik-ytmusic] Installing binary to ${BINARY_DST}"
-            cp -f "${BINARY_SRC}" "${BINARY_DST}"
-            chmod +x "${BINARY_DST}"
+          if [[ ! -d "${BUNDLE_DST}" ]] || ! diff -rq "${BUNDLE_SRC}" "${BUNDLE_DST}" >/dev/null 2>&1; then
+            echo "[gozik-ytmusic] Installing bundle to ${BUNDLE_DST}"
+            rm -rf "${BUNDLE_DST}"
+            cp -a "${BUNDLE_SRC}" "${BUNDLE_DST}"
+            chmod -R +x "${BUNDLE_DST}"
           fi
-
-          # Install the systemd unit if absent or outdated.
-          if [[ ! -f "${UNIT_DST}" ]] || \
-             ! cmp -s "${UNIT_SRC}" "${UNIT_DST}"; then
+          if [[ ! -f "${UNIT_DST}" ]] || ! cmp -s "${UNIT_SRC}" "${UNIT_DST}"; then
             echo "[gozik-ytmusic] Installing systemd unit to ${UNIT_DST}"
-            # Patch the ExecStart path to match the actual install location.
-            sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}|${BINARY_DST}|g" \
+            sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}/${BINARY_NAME}|${BUNDLE_DST}/${BINARY_NAME}|g" \
               "${UNIT_SRC}" > "${UNIT_DST}"
-            # Reload systemd so it picks up the new/updated unit file.
             if command -v systemctl &>/dev/null && \
                systemctl --user is-system-running &>/dev/null 2>&1; then
               systemctl --user daemon-reload
               systemctl --user enable "${UNIT_NAME}"
               systemctl --user restart "${UNIT_NAME}" || \
                 systemctl --user start "${UNIT_NAME}"
-              echo "[gozik-ytmusic] Daemon registered and started via systemd."
+              echo '[gozik-ytmusic] Daemon registered and started via systemd.'
             else
-              echo "[gozik-ytmusic] systemd not available; starting server directly."
-              exec "${BINARY_DST}" "$@"
+              echo '[gozik-ytmusic] systemd not available; starting server directly.'
+              exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
             fi
             exit 0
           fi
-
-          # Subsequent runs: if the systemd unit is active, nothing to do.
           if command -v systemctl &>/dev/null && \
              systemctl --user is-active "${UNIT_NAME}" &>/dev/null; then
-            echo "[gozik-ytmusic] Daemon already running via systemd."
+            echo '[gozik-ytmusic] Daemon already running via systemd.'
             exit 0
           fi
-
-          # Fallback: run directly (non-systemd environments).
-          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
-          exec "${BINARY_DST}" "$@"
+          exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
           APPRUN_EOF
           chmod +x "${APPDIR}/AppRun"
-
-          echo "AppDir assembled:"
           find "${APPDIR}" -type f | sort
-
       - name: Download appimagetool (AMD64)
         run: |
+          cd "${{ github.workspace }}"
+          cd ..
           curl -fsSL -o appimagetool \
-            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+            'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
           chmod +x appimagetool
-          # Extract so it can run without FUSE on the CI runner.
           ./appimagetool --appimage-extract
           mv squashfs-root appimagetool-extracted
-
       - name: Build AppImage (AMD64)
         env:
           VERSION: ${{ steps.version.outputs.ver }}
-          ARCH: x86_64
         run: |
+          cd "${{ github.workspace }}"
+          cd ..
           mkdir -p dist-appimage
-          APPIMAGETOOL_EXEC="./appimagetool-extracted/AppRun"
+          APPIMAGETOOL_EXEC='./appimagetool-extracted/AppRun'
           APPIMAGE_OUT="dist-appimage/gozik-ytmusic-plugin-linux-amd64-${VERSION}.AppImage"
           ARCH=x86_64 "${APPIMAGETOOL_EXEC}" \
             --comp xz \
-            "appdir-amd64" \
+            appdir-amd64 \
             "${APPIMAGE_OUT}"
           chmod +x "${APPIMAGE_OUT}"
-          echo "AppImage created:"
           ls -lh dist-appimage/
           sha256sum "${APPIMAGE_OUT}"
-
-      - name: Upload AppImage artefact (AMD64)
-        uses: actions/upload-artifact@v4
+      - name: Stage AppImage for upload
+        run: |
+          cd "${{ github.workspace }}"
+          mkdir -p artifacts
+          cp ../dist-appimage/*.AppImage artifacts/ || true
+      - uses: actions/upload-artifact@v4
         with:
-          name: "ytmusic-plugin-linux-amd64"
-          path: "dist-appimage/gozik-ytmusic-plugin-linux-amd64-*.AppImage"
+          name: ytmusic-plugin-linux-amd64
+          path: artifacts/*.AppImage
           retention-days: 30
           if-no-files-found: error
 
-  # ===========================================================================
-  # JOB: build-linux-arm64
-  #
-  # QEMU-emulated native ARM64 compilation inside a Debian Bookworm container.
-  # Using uraimo/run-on-arch-action to spin up the emulated environment.
-  # Nuitka requires a native ARM64 Python to produce a correct ARM64 binary;
-  # cross-compilation via the AMD64 runner is not supported by Nuitka.
-  # ===========================================================================
   build-linux-arm64:
-    name: "Linux ARM64 — QEMU + Nuitka + AppImage"
+    name: 'Linux ARM64 — QEMU + PyInstaller + AppImage'
     runs-on: ubuntu-latest
-    timeout-minutes: 150   # QEMU emulation is significantly slower
-
+    timeout-minutes: 180
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # -----------------------------------------------------------------------
-      # Derive version outside the container (git is on the host runner).
-      # -----------------------------------------------------------------------
       - name: Derive version
         id: version
         run: |
@@ -1150,151 +646,80 @@ jobs:
             VER="0.0.0-$(git rev-parse --short HEAD)"
           fi
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-
-      # -----------------------------------------------------------------------
-      # Full Nuitka build + AppDir assembly inside the ARM64 QEMU container.
-      # The action mounts the workspace at /workspace inside the container.
-      # -----------------------------------------------------------------------
       - name: Build inside ARM64 QEMU container
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
           distro: bookworm
           githubToken: ${{ github.token }}
-          # Persist the pip download cache between runs.
-          dockerRunArgs: "--volume ${{ github.workspace }}:/workspace"
-          # Install all toolchain packages before running the build command.
+          dockerRunArgs: '--volume ${{ github.workspace }}:/workspace'
           install: |
             set -euo pipefail
             apt-get update
-            apt-get install -y \
-              python3 \
-              python3-pip \
-              python3-venv \
-              python3-dev \
-              libpython3-dev \
-              gcc \
-              g++ \
-              patchelf \
-              ccache \
-              squashfs-tools \
-              file \
-              binutils \
-              curl \
-              git \
-              libfuse2
+            apt-get install -y python3 python3-pip python3-venv python3-dev libpython3-dev gcc g++ patchelf ccache squashfs-tools file binutils curl git libfuse2
           run: |
             set -euo pipefail
             cd /workspace
-
-            PLUGIN_DIR="gozik-yt-music"
-            BINARY_NAME="gozik-yt-music-server"
-            DAEMON_PORT="${{ env.DAEMON_PORT }}"
-            VERSION="${{ steps.version.outputs.ver }}"
-
-            # ------------------------------------------------------------------
-            # Set up a Python virtual environment inside the container.
-            # ------------------------------------------------------------------
+            git clone --depth 1 '${{ env.PLUGIN_REPO }}' '${{ env.PLUGIN_DIR }}'
+            PLUGIN_DIR='${{ env.PLUGIN_DIR }}'
+            BINARY_NAME='${{ env.BINARY_NAME }}'
+            DAEMON_PORT='${{ env.DAEMON_PORT }}'
+            VERSION='${{ steps.version.outputs.ver }}'
             python3 -m venv "${PLUGIN_DIR}/.venv"
             PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
             PIP="${PLUGIN_DIR}/.venv/bin/pip"
-
             "$PIP" install --upgrade pip
             "$PIP" install -r "${PLUGIN_DIR}/requirements.txt"
-            "$PIP" install "nuitka==${{ env.NUITKA_VERSION }}"
-            "$PIP" install ordered-set zstandard
-
-            # ------------------------------------------------------------------
-            # Generate protobuf stubs.
-            # ------------------------------------------------------------------
-            GRPC_TOOLS_PROTO="$("$PYTHON" -c "import grpc_tools,os; print(os.path.join(os.path.dirname(grpc_tools.__file__),'_proto'))")"
-            PROTO_SRC="gozik/api/music/v1"
-            OUT_DIR="${PLUGIN_DIR}/generated"
-            mkdir -p "$OUT_DIR"
-            touch "$OUT_DIR/__init__.py"
-            "$PYTHON" -m grpc_tools.protoc \
-              --proto_path="$PROTO_SRC" \
-              --proto_path="$GRPC_TOOLS_PROTO" \
-              --python_out="$OUT_DIR" \
-              --grpc_python_out="$OUT_DIR" \
-              "$PROTO_SRC/music_provider.proto"
-            "$PYTHON" -m grpc_tools.protoc \
-              --proto_path="$PROTO_SRC" \
-              --proto_path="$GRPC_TOOLS_PROTO" \
-              --python_out="$OUT_DIR" \
-              --grpc_python_out="$OUT_DIR" \
-              "$PROTO_SRC/provider_link.proto"
-            for f in "$OUT_DIR"/*_pb2_grpc.py; do
-              sed -i 's/^import \(.*_pb2\) as/from generated import \1 as/' "$f"
-            done
-
-            # ------------------------------------------------------------------
-            # Resolve certifi CA bundle path.
-            # ------------------------------------------------------------------
-            CERTIFI_PEM="$("$PYTHON" -c 'import certifi; print(certifi.where())')"
-
-            # ------------------------------------------------------------------
-            # Nuitka compilation (ARM64 native).
-            # ------------------------------------------------------------------
-            JOBS=$(nproc)
-            export PATH="/usr/lib/ccache:$PATH"
-            mkdir -p "${PLUGIN_DIR}/dist"
+            "$PIP" install 'pyinstaller==${{ env.PYINSTALLER_VERSION }}'
             cd "${PLUGIN_DIR}"
-
-            "$PYTHON" -m nuitka \
-              --mode=onefile \
-              --onefile-tempdir-spec="{CACHE_DIR}/gozik/ytmusic-server/{VERSION}" \
-              --output-dir=dist \
-              "--output-filename=${BINARY_NAME}" \
-              --include-package=ytmusicapi \
-              --include-package=grpc \
-              --include-package=grpc._cython \
-              --include-package=google.protobuf \
-              --include-package=google.protobuf.internal \
-              --include-package=yt_dlp \
-              --include-package=yt_dlp.extractor \
-              --include-package=requests \
-              --include-package=certifi \
-              --include-package=charset_normalizer \
-              --include-package=idna \
-              --include-package=urllib3 \
-              --include-package=generated \
-              --include-package=handlers \
-              --include-package-data=ytmusicapi \
-              --include-package-data=grpc \
-              "--include-data-files=${CERTIFI_PEM}=certifi/cacert.pem" \
-              --include-data-dir=generated=generated \
-              --nofollow-import-to=tkinter \
-              --nofollow-import-to=unittest \
-              --nofollow-import-to=test \
-              --nofollow-import-to=distutils \
-              --nofollow-import-to=grpc_tools \
-              --nofollow-import-to=lib2to3 \
-              --nofollow-import-to=pydoc \
-              --nofollow-import-to=doctest \
-              --python-flag=no_site \
-              --python-flag=no_warnings \
-              --enable-plugins=anti-bloat \
-              --assume-yes-for-downloads \
-              --remove-output \
-              --lto=yes \
-              "--jobs=${JOBS}" \
+            bash codegen.sh
+            mkdir -p certifi
+            "$PYTHON" -c "import certifi, shutil; shutil.copy(certifi.where(), 'certifi/cacert.pem')"
+            "$PYTHON" -m pyinstaller \
+              --noconfirm --clean --onedir \
+              --name="${BINARY_NAME}" \
+              --distpath=dist \
+              --workpath=build \
+              --hidden-import=ytmusicapi \
+              --hidden-import=grpc \
+              --hidden-import=grpc._cython \
+              --hidden-import=grpc._cython.cygrpc \
+              --hidden-import=google.protobuf \
+              --hidden-import=google.protobuf.internal \
+              --hidden-import=yt_dlp \
+              --hidden-import=yt_dlp.extractor \
+              --hidden-import=yt_dlp.extractor.youtubetab \
+              --hidden-import=yt_dlp.extractor.youtube \
+              --hidden-import=requests \
+              --hidden-import=certifi \
+              --hidden-import=charset_normalizer \
+              --hidden-import=idna \
+              --hidden-import=urllib3 \
+              --hidden-import=generated \
+              --hidden-import=handlers \
+              --collect-all=ytmusicapi \
+              --collect-all=grpc \
+              --collect-all=google.protobuf \
+              --collect-all=yt_dlp \
+              --collect-all=certifi \
+              --add-data="generated:generated" \
+              --add-data="certifi/cacert.pem:certifi" \
+              --exclude-module=tkinter \
+              --exclude-module=unittest \
+              --exclude-module=test \
+              --exclude-module=grpc_tools \
+              --exclude-module=lib2to3 \
+              --exclude-module=pydoc \
+              --exclude-module=doctest \
               server.py
-
             cd /workspace
-
-            # ------------------------------------------------------------------
-            # Assemble AppDir for ARM64.
-            # ------------------------------------------------------------------
-            APPDIR="appdir-arm64"
+            APPDIR='appdir-arm64'
             mkdir -p "${APPDIR}/usr/bin"
             mkdir -p "${APPDIR}/usr/share/applications"
             mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
             mkdir -p "${APPDIR}/usr/lib/systemd/user"
-
-            cp "${PLUGIN_DIR}/dist/${BINARY_NAME}" "${APPDIR}/usr/bin/"
-            chmod +x "${APPDIR}/usr/bin/${BINARY_NAME}"
-
+            cp -a "${PLUGIN_DIR}/dist/${BINARY_NAME}" "${APPDIR}/usr/bin/${BINARY_NAME}"
+            chmod -R +x "${APPDIR}/usr/bin/${BINARY_NAME}"
             cat > "${APPDIR}/usr/share/applications/gozik-ytmusic.desktop" <<DESKTOP_EOF
             [Desktop Entry]
             Type=Application
@@ -1306,21 +731,17 @@ jobs:
             NoDisplay=true
             X-AppImage-Version=${VERSION}
             DESKTOP_EOF
-
-            printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' \
-              | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
-
+            printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
             ln -sf usr/share/applications/gozik-ytmusic.desktop "${APPDIR}/gozik-ytmusic.desktop"
             ln -sf usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png "${APPDIR}/gozik-ytmusic.png"
-
             cat > "${APPDIR}/usr/lib/systemd/user/gozik-ytmusic.service" <<UNIT_EOF
             [Unit]
-            Description=gozik YouTube Music gRPC plugin server
+            Description=${{ env.DAEMON_DESCRIPTION }}
             After=network.target
 
             [Service]
             Type=simple
-            ExecStart=%h/.local/share/gozik/ytmusic/${BINARY_NAME} --port ${DAEMON_PORT}
+            ExecStart=%h/.local/share/gozik/ytmusic/${BINARY_NAME}/${BINARY_NAME} --port ${DAEMON_PORT}
             Restart=on-failure
             RestartSec=5
             StandardOutput=journal
@@ -1329,57 +750,53 @@ jobs:
             [Install]
             WantedBy=default.target
             UNIT_EOF
-
             cat > "${APPDIR}/AppRun" <<'APPRUN_HEREDOC'
             #!/bin/bash
             set -euo pipefail
             HERE="$(dirname "$(readlink -f "${0}")")"
-            BINARY_NAME="gozik-yt-music-server"
-            INSTALL_DIR="${HOME}/.local/share/gozik/ytmusic"
-            SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
-            UNIT_NAME="gozik-ytmusic.service"
+            BINARY_NAME='gozik-yt-music-server'
+            INSTALL_DIR='${HOME}/.local/share/gozik/ytmusic'
+            SYSTEMD_USER_DIR='${HOME}/.config/systemd/user'
+            UNIT_NAME='gozik-ytmusic.service'
             UNIT_SRC="${HERE}/usr/lib/systemd/user/${UNIT_NAME}"
             UNIT_DST="${SYSTEMD_USER_DIR}/${UNIT_NAME}"
-            BINARY_SRC="${HERE}/usr/bin/${BINARY_NAME}"
-            BINARY_DST="${INSTALL_DIR}/${BINARY_NAME}"
+            BUNDLE_SRC="${HERE}/usr/bin/${BINARY_NAME}"
+            BUNDLE_DST="${INSTALL_DIR}/${BINARY_NAME}"
             mkdir -p "${INSTALL_DIR}" "${SYSTEMD_USER_DIR}"
-            if [[ ! -f "${BINARY_DST}" ]] || ! cmp -s "${BINARY_SRC}" "${BINARY_DST}"; then
-              cp -f "${BINARY_SRC}" "${BINARY_DST}"
-              chmod +x "${BINARY_DST}"
+            if [[ ! -d "${BUNDLE_DST}" ]] || ! diff -rq "${BUNDLE_SRC}" "${BUNDLE_DST}" >/dev/null 2>&1; then
+              echo "[gozik-ytmusic] Installing bundle to ${BUNDLE_DST}"
+              rm -rf "${BUNDLE_DST}"
+              cp -a "${BUNDLE_SRC}" "${BUNDLE_DST}"
+              chmod -R +x "${BUNDLE_DST}"
             fi
             if [[ ! -f "${UNIT_DST}" ]] || ! cmp -s "${UNIT_SRC}" "${UNIT_DST}"; then
-              sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}|${BINARY_DST}|g" \
+              sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}/${BINARY_NAME}|${BUNDLE_DST}/${BINARY_NAME}|g" \
                 "${UNIT_SRC}" > "${UNIT_DST}"
               if command -v systemctl &>/dev/null && \
                  systemctl --user is-system-running &>/dev/null 2>&1; then
                 systemctl --user daemon-reload
                 systemctl --user enable "${UNIT_NAME}"
                 systemctl --user restart "${UNIT_NAME}" || systemctl --user start "${UNIT_NAME}"
+                echo '[gozik-ytmusic] Daemon registered and started via systemd.'
               else
-                exec "${BINARY_DST}" "$@"
+                exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
               fi
               exit 0
             fi
             if command -v systemctl &>/dev/null && \
                systemctl --user is-active "${UNIT_NAME}" &>/dev/null; then
+              echo '[gozik-ytmusic] Daemon already running via systemd.'
               exit 0
             fi
-            export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
-            exec "${BINARY_DST}" "$@"
+            exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
             APPRUN_HEREDOC
             chmod +x "${APPDIR}/AppRun"
-
-            # ------------------------------------------------------------------
-            # Download appimagetool for aarch64 and build the AppImage.
-            # ------------------------------------------------------------------
-            APPIMAGETOOL="appimagetool-aarch64.AppImage"
+            APPIMAGETOOL='appimagetool-aarch64.AppImage'
             curl -fsSL -o "$APPIMAGETOOL" \
-              "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage"
+              'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage'
             chmod +x "$APPIMAGETOOL"
-            # Extract to avoid needing FUSE in the container.
             "./${APPIMAGETOOL}" --appimage-extract
             mv squashfs-root appimagetool-arm64-extracted
-
             mkdir -p dist-appimage
             APPIMAGE_OUT="dist-appimage/gozik-ytmusic-plugin-linux-arm64-${VERSION}.AppImage"
             ARCH=aarch64 ./appimagetool-arm64-extracted/AppRun \
@@ -1387,37 +804,24 @@ jobs:
               "${APPDIR}" \
               "${APPIMAGE_OUT}"
             chmod +x "${APPIMAGE_OUT}"
-            echo "AppImage (arm64) created:"
             ls -lh dist-appimage/
             sha256sum "${APPIMAGE_OUT}"
-
-      - name: Upload AppImage artefact (ARM64)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: "ytmusic-plugin-linux-arm64"
-          path: "dist-appimage/gozik-ytmusic-plugin-linux-arm64-*.AppImage"
+          name: ytmusic-plugin-linux-arm64
+          path: dist-appimage/gozik-ytmusic-plugin-linux-arm64-*.AppImage
           retention-days: 30
           if-no-files-found: error
 
-  # ===========================================================================
-  # JOB: build-linux-riscv64
-  #
-  # QEMU-emulated RISCV64 build. Same pattern as ARM64.
-  # NOTE: RISCV64 support in grpcio wheels is still maturing; the job is
-  # marked continue-on-error: true to avoid blocking the release pipeline.
-  # ===========================================================================
   build-linux-riscv64:
-    name: "Linux RISCV64 — QEMU + Nuitka + AppImage"
+    name: 'Linux RISCV64 — QEMU + PyInstaller + AppImage'
     runs-on: ubuntu-latest
-    timeout-minutes: 180   # RISCV64 emulation is slower than ARM64
+    timeout-minutes: 240
     continue-on-error: true
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Derive version
         id: version
         run: |
@@ -1427,131 +831,80 @@ jobs:
             VER="0.0.0-$(git rev-parse --short HEAD)"
           fi
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-
       - name: Build inside RISCV64 QEMU container
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: riscv64
           distro: bookworm
           githubToken: ${{ github.token }}
-          dockerRunArgs: "--volume ${{ github.workspace }}:/workspace"
+          dockerRunArgs: '--volume ${{ github.workspace }}:/workspace'
           install: |
             set -euo pipefail
             apt-get update
-            apt-get install -y \
-              python3 \
-              python3-pip \
-              python3-venv \
-              python3-dev \
-              libpython3-dev \
-              gcc \
-              g++ \
-              patchelf \
-              ccache \
-              squashfs-tools \
-              file \
-              binutils \
-              curl \
-              git \
-              libfuse2
+            apt-get install -y python3 python3-pip python3-venv python3-dev libpython3-dev gcc g++ patchelf ccache squashfs-tools file binutils curl git libfuse2
           run: |
             set -euo pipefail
             cd /workspace
-
-            PLUGIN_DIR="gozik-yt-music"
-            BINARY_NAME="gozik-yt-music-server"
-            DAEMON_PORT="${{ env.DAEMON_PORT }}"
-            VERSION="${{ steps.version.outputs.ver }}"
-
+            git clone --depth 1 '${{ env.PLUGIN_REPO }}' '${{ env.PLUGIN_DIR }}'
+            PLUGIN_DIR='${{ env.PLUGIN_DIR }}'
+            BINARY_NAME='${{ env.BINARY_NAME }}'
+            DAEMON_PORT='${{ env.DAEMON_PORT }}'
+            VERSION='${{ steps.version.outputs.ver }}'
             python3 -m venv "${PLUGIN_DIR}/.venv"
             PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
             PIP="${PLUGIN_DIR}/.venv/bin/pip"
-
             "$PIP" install --upgrade pip
-            # grpcio may need to be built from source on riscv64.
-            # Increase the timeout to accommodate the longer compilation.
             "$PIP" install --timeout 600 -r "${PLUGIN_DIR}/requirements.txt"
-            "$PIP" install "nuitka==${{ env.NUITKA_VERSION }}"
-            "$PIP" install ordered-set zstandard
-
-            GRPC_TOOLS_PROTO="$("$PYTHON" -c "import grpc_tools,os; print(os.path.join(os.path.dirname(grpc_tools.__file__),'_proto'))")"
-            PROTO_SRC="gozik/api/music/v1"
-            OUT_DIR="${PLUGIN_DIR}/generated"
-            mkdir -p "$OUT_DIR"
-            touch "$OUT_DIR/__init__.py"
-            "$PYTHON" -m grpc_tools.protoc \
-              --proto_path="$PROTO_SRC" \
-              --proto_path="$GRPC_TOOLS_PROTO" \
-              --python_out="$OUT_DIR" \
-              --grpc_python_out="$OUT_DIR" \
-              "$PROTO_SRC/music_provider.proto"
-            "$PYTHON" -m grpc_tools.protoc \
-              --proto_path="$PROTO_SRC" \
-              --proto_path="$GRPC_TOOLS_PROTO" \
-              --python_out="$OUT_DIR" \
-              --grpc_python_out="$OUT_DIR" \
-              "$PROTO_SRC/provider_link.proto"
-            for f in "$OUT_DIR"/*_pb2_grpc.py; do
-              sed -i 's/^import \(.*_pb2\) as/from generated import \1 as/' "$f"
-            done
-
-            CERTIFI_PEM="$("$PYTHON" -c 'import certifi; print(certifi.where())')"
-            JOBS=$(nproc)
-            export PATH="/usr/lib/ccache:$PATH"
-            mkdir -p "${PLUGIN_DIR}/dist"
+            "$PIP" install 'pyinstaller==${{ env.PYINSTALLER_VERSION }}'
             cd "${PLUGIN_DIR}"
-
-            "$PYTHON" -m nuitka \
-              --mode=onefile \
-              --onefile-tempdir-spec="{CACHE_DIR}/gozik/ytmusic-server/{VERSION}" \
-              --output-dir=dist \
-              "--output-filename=${BINARY_NAME}" \
-              --include-package=ytmusicapi \
-              --include-package=grpc \
-              --include-package=grpc._cython \
-              --include-package=google.protobuf \
-              --include-package=google.protobuf.internal \
-              --include-package=yt_dlp \
-              --include-package=yt_dlp.extractor \
-              --include-package=requests \
-              --include-package=certifi \
-              --include-package=charset_normalizer \
-              --include-package=idna \
-              --include-package=urllib3 \
-              --include-package=generated \
-              --include-package=handlers \
-              --include-package-data=ytmusicapi \
-              --include-package-data=grpc \
-              "--include-data-files=${CERTIFI_PEM}=certifi/cacert.pem" \
-              --include-data-dir=generated=generated \
-              --nofollow-import-to=tkinter \
-              --nofollow-import-to=unittest \
-              --nofollow-import-to=test \
-              --nofollow-import-to=distutils \
-              --nofollow-import-to=grpc_tools \
-              --nofollow-import-to=lib2to3 \
-              --nofollow-import-to=pydoc \
-              --nofollow-import-to=doctest \
-              --python-flag=no_site \
-              --python-flag=no_warnings \
-              --enable-plugins=anti-bloat \
-              --assume-yes-for-downloads \
-              --remove-output \
-              --lto=yes \
-              "--jobs=${JOBS}" \
+            bash codegen.sh
+            mkdir -p certifi
+            "$PYTHON" -c "import certifi, shutil; shutil.copy(certifi.where(), 'certifi/cacert.pem')"
+            "$PYTHON" -m pyinstaller \
+              --noconfirm --clean --onedir \
+              --name="${BINARY_NAME}" \
+              --distpath=dist \
+              --workpath=build \
+              --hidden-import=ytmusicapi \
+              --hidden-import=grpc \
+              --hidden-import=grpc._cython \
+              --hidden-import=grpc._cython.cygrpc \
+              --hidden-import=google.protobuf \
+              --hidden-import=google.protobuf.internal \
+              --hidden-import=yt_dlp \
+              --hidden-import=yt_dlp.extractor \
+              --hidden-import=yt_dlp.extractor.youtubetab \
+              --hidden-import=yt_dlp.extractor.youtube \
+              --hidden-import=requests \
+              --hidden-import=certifi \
+              --hidden-import=charset_normalizer \
+              --hidden-import=idna \
+              --hidden-import=urllib3 \
+              --hidden-import=generated \
+              --hidden-import=handlers \
+              --collect-all=ytmusicapi \
+              --collect-all=grpc \
+              --collect-all=google.protobuf \
+              --collect-all=yt_dlp \
+              --collect-all=certifi \
+              --add-data="generated:generated" \
+              --add-data="certifi/cacert.pem:certifi" \
+              --exclude-module=tkinter \
+              --exclude-module=unittest \
+              --exclude-module=test \
+              --exclude-module=grpc_tools \
+              --exclude-module=lib2to3 \
+              --exclude-module=pydoc \
+              --exclude-module=doctest \
               server.py
-
             cd /workspace
-
-            APPDIR="appdir-riscv64"
+            APPDIR='appdir-riscv64'
             mkdir -p "${APPDIR}/usr/bin"
             mkdir -p "${APPDIR}/usr/share/applications"
             mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
             mkdir -p "${APPDIR}/usr/lib/systemd/user"
-
-            cp "${PLUGIN_DIR}/dist/${BINARY_NAME}" "${APPDIR}/usr/bin/"
-            chmod +x "${APPDIR}/usr/bin/${BINARY_NAME}"
-
+            cp -a "${PLUGIN_DIR}/dist/${BINARY_NAME}" "${APPDIR}/usr/bin/${BINARY_NAME}"
+            chmod -R +x "${APPDIR}/usr/bin/${BINARY_NAME}"
             cat > "${APPDIR}/usr/share/applications/gozik-ytmusic.desktop" <<DESKTOP_EOF
             [Desktop Entry]
             Type=Application
@@ -1563,21 +916,17 @@ jobs:
             NoDisplay=true
             X-AppImage-Version=${VERSION}
             DESKTOP_EOF
-
-            printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' \
-              | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
-
+            printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' | base64 -d > "${APPDIR}/usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png"
             ln -sf usr/share/applications/gozik-ytmusic.desktop "${APPDIR}/gozik-ytmusic.desktop"
             ln -sf usr/share/icons/hicolor/256x256/apps/gozik-ytmusic.png "${APPDIR}/gozik-ytmusic.png"
-
             cat > "${APPDIR}/usr/lib/systemd/user/gozik-ytmusic.service" <<UNIT_EOF
             [Unit]
-            Description=gozik YouTube Music gRPC plugin server
+            Description=${{ env.DAEMON_DESCRIPTION }}
             After=network.target
 
             [Service]
             Type=simple
-            ExecStart=%h/.local/share/gozik/ytmusic/${BINARY_NAME} --port ${DAEMON_PORT}
+            ExecStart=%h/.local/share/gozik/ytmusic/${BINARY_NAME}/${BINARY_NAME} --port ${DAEMON_PORT}
             Restart=on-failure
             RestartSec=5
             StandardOutput=journal
@@ -1586,57 +935,53 @@ jobs:
             [Install]
             WantedBy=default.target
             UNIT_EOF
-
             cat > "${APPDIR}/AppRun" <<'APPRUN_HEREDOC'
             #!/bin/bash
             set -euo pipefail
             HERE="$(dirname "$(readlink -f "${0}")")"
-            BINARY_NAME="gozik-yt-music-server"
-            INSTALL_DIR="${HOME}/.local/share/gozik/ytmusic"
-            SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
-            UNIT_NAME="gozik-ytmusic.service"
+            BINARY_NAME='gozik-yt-music-server'
+            INSTALL_DIR='${HOME}/.local/share/gozik/ytmusic'
+            SYSTEMD_USER_DIR='${HOME}/.config/systemd/user'
+            UNIT_NAME='gozik-ytmusic.service'
             UNIT_SRC="${HERE}/usr/lib/systemd/user/${UNIT_NAME}"
             UNIT_DST="${SYSTEMD_USER_DIR}/${UNIT_NAME}"
-            BINARY_SRC="${HERE}/usr/bin/${BINARY_NAME}"
-            BINARY_DST="${INSTALL_DIR}/${BINARY_NAME}"
+            BUNDLE_SRC="${HERE}/usr/bin/${BINARY_NAME}"
+            BUNDLE_DST="${INSTALL_DIR}/${BINARY_NAME}"
             mkdir -p "${INSTALL_DIR}" "${SYSTEMD_USER_DIR}"
-            if [[ ! -f "${BINARY_DST}" ]] || ! cmp -s "${BINARY_SRC}" "${BINARY_DST}"; then
-              cp -f "${BINARY_SRC}" "${BINARY_DST}"
-              chmod +x "${BINARY_DST}"
+            if [[ ! -d "${BUNDLE_DST}" ]] || ! diff -rq "${BUNDLE_SRC}" "${BUNDLE_DST}" >/dev/null 2>&1; then
+              echo "[gozik-ytmusic] Installing bundle to ${BUNDLE_DST}"
+              rm -rf "${BUNDLE_DST}"
+              cp -a "${BUNDLE_SRC}" "${BUNDLE_DST}"
+              chmod -R +x "${BUNDLE_DST}"
             fi
             if [[ ! -f "${UNIT_DST}" ]] || ! cmp -s "${UNIT_SRC}" "${UNIT_DST}"; then
-              sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}|${BINARY_DST}|g" \
+              sed "s|%h/.local/share/gozik/ytmusic/${BINARY_NAME}/${BINARY_NAME}|${BUNDLE_DST}/${BINARY_NAME}|g" \
                 "${UNIT_SRC}" > "${UNIT_DST}"
               if command -v systemctl &>/dev/null && \
                  systemctl --user is-system-running &>/dev/null 2>&1; then
                 systemctl --user daemon-reload
                 systemctl --user enable "${UNIT_NAME}"
                 systemctl --user restart "${UNIT_NAME}" || systemctl --user start "${UNIT_NAME}"
+                echo '[gozik-ytmusic] Daemon registered and started via systemd.'
               else
-                exec "${BINARY_DST}" "$@"
+                exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
               fi
               exit 0
             fi
             if command -v systemctl &>/dev/null && \
                systemctl --user is-active "${UNIT_NAME}" &>/dev/null; then
+              echo '[gozik-ytmusic] Daemon already running via systemd.'
               exit 0
             fi
-            export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
-            exec "${BINARY_DST}" "$@"
+            exec "${BUNDLE_DST}/${BINARY_NAME}" "$@"
             APPRUN_HEREDOC
             chmod +x "${APPDIR}/AppRun"
-
-            # Download riscv64 appimagetool.
-            # NOTE: appimagetool does not currently publish a riscv64 binary.
-            # We use the x86_64 appimagetool in ARCH-override mode, which is
-            # supported for building non-native AppImages on the host arch.
-            APPIMAGETOOL="appimagetool-x86_64.AppImage"
+            APPIMAGETOOL='appimagetool-x86_64.AppImage'
             curl -fsSL -o "$APPIMAGETOOL" \
-              "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+              'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
             chmod +x "$APPIMAGETOOL"
             "./${APPIMAGETOOL}" --appimage-extract
             mv squashfs-root appimagetool-riscv64-extracted
-
             mkdir -p dist-appimage
             APPIMAGE_OUT="dist-appimage/gozik-ytmusic-plugin-linux-riscv64-${VERSION}.AppImage"
             ARCH=riscv64 ./appimagetool-riscv64-extracted/AppRun \
@@ -1644,30 +989,19 @@ jobs:
               "${APPDIR}" \
               "${APPIMAGE_OUT}"
             chmod +x "${APPIMAGE_OUT}"
-            echo "AppImage (riscv64) created:"
             ls -lh dist-appimage/
             sha256sum "${APPIMAGE_OUT}"
-
-      - name: Upload AppImage artefact (RISCV64)
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: "ytmusic-plugin-linux-riscv64"
-          path: "dist-appimage/gozik-ytmusic-plugin-linux-riscv64-*.AppImage"
+          name: ytmusic-plugin-linux-riscv64
+          path: dist-appimage/gozik-ytmusic-plugin-linux-riscv64-*.AppImage
           retention-days: 30
-          if-no-files-found: warn   # non-fatal; riscv64 is best-effort
+          if-no-files-found: warn
 
-  # ===========================================================================
-  # JOB: release
-  #
-  # Collects all platform artefacts and publishes them to a GitHub Release when
-  # triggered by a plugin-v* tag. On push/dispatch it simply summarises the
-  # available artefacts without publishing.
-  # ===========================================================================
   release:
-    name: "Publish GitHub Release"
+    name: 'Publish GitHub Release'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Always run the release job even if optional jobs failed.
     if: always()
     needs:
       - build-windows
@@ -1677,50 +1011,33 @@ jobs:
       - build-linux-riscv64
     permissions:
       contents: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # -----------------------------------------------------------------------
-      # Download all artefacts produced by the build jobs.
-      # -----------------------------------------------------------------------
-      - name: Download all plugin artefacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-          pattern: "ytmusic-plugin-*"
+          pattern: 'ytmusic-plugin-*'
           merge-multiple: true
-
-      # -----------------------------------------------------------------------
-      # Generate a SHA-256 checksum file for all downloaded artefacts.
-      # -----------------------------------------------------------------------
       - name: Generate checksums
         run: |
           cd release-artifacts
-          echo "# SHA-256 checksums for gozik YouTube Music Plugin artefacts" > SHA256SUMS.txt
-          echo "# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> SHA256SUMS.txt
-          echo "" >> SHA256SUMS.txt
-          find . -type f ! -name "SHA256SUMS.txt" | sort | while read -r f; do
+          echo '# SHA-256 checksums for gozik YouTube Music Plugin artefacts' > SHA256SUMS.txt
+          echo "# Generated: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> SHA256SUMS.txt
+          echo '' >> SHA256SUMS.txt
+          find . -type f ! -name 'SHA256SUMS.txt' | sort | while read -r f; do
             sha256sum "$f" >> SHA256SUMS.txt
           done
-          echo "Artefacts and checksums:"
           cat SHA256SUMS.txt
-
-      # -----------------------------------------------------------------------
-      # Publish to GitHub Releases only on plugin-v* tags.
-      # -----------------------------------------------------------------------
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/plugin-v')
         uses: softprops/action-gh-release@v2
         with:
-          name: "gozik YouTube Music Plugin ${{ github.ref_name }}"
+          name: 'gozik YouTube Music Plugin ${{ github.ref_name }}'
           tag_name: ${{ github.ref_name }}
           body: |
             ## gozik YouTube Music Plugin — ${{ github.ref_name }}
 
             Standalone gRPC plugin server for the gozik music player.
-            Compiled with Nuitka ${{ env.NUITKA_VERSION }} — no Python interpreter required on target machines.
+            Built with PyInstaller ${{ env.PYINSTALLER_VERSION }} in onedir mode — no Python interpreter required on target machines.
 
             ### Platform packages
 
@@ -1746,24 +1063,20 @@ jobs:
             release-artifacts/*
           generate_release_notes: false
           fail_on_unmatched_files: false
-
-      # -----------------------------------------------------------------------
-      # On non-tag runs, print a summary instead of publishing.
-      # -----------------------------------------------------------------------
       - name: Print artefact summary (non-tag run)
         if: "!startsWith(github.ref, 'refs/tags/plugin-v')"
         run: |
-          echo "## Plugin build summary (non-release run)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '## Plugin build summary (non-release run)' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
           echo "Trigger: \`${GITHUB_REF}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| File | Size |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '| File | Size |' >> "$GITHUB_STEP_SUMMARY"
+          echo '|---|---|' >> "$GITHUB_STEP_SUMMARY"
           find release-artifacts -type f | sort | while read -r f; do
             SIZE=$(du -sh "$f" | cut -f1)
             NAME=$(basename "$f")
             echo "| \`${NAME}\` | ${SIZE} |" >> "$GITHUB_STEP_SUMMARY"
           done
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Push a \`plugin-v*\` tag to publish these artefacts as a GitHub Release." \
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Push a \`plugin-v*\` tag to publish these artefacts as a GitHub Release.' \
             >> "$GITHUB_STEP_SUMMARY"

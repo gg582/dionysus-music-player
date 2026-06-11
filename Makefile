@@ -34,8 +34,7 @@ PROTO_DIR := api/music/v1
 proto:
 	$(PROTOC) --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		$(PROTO_DIR)/music_provider.proto \
-		$(PROTO_DIR)/provider_link.proto
+		$(PROTO_DIR)/music_provider.proto
 
 icons:
 	@mkdir -p assets/icons/hicolor

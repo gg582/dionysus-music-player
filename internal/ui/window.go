@@ -1652,8 +1652,13 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 	go func() {
 		// Provider tracks already have metadata; skip local file extraction.
 		if song.ProviderTrackID != "" {
-			// Download cover art from provider if available.
-			if song.CoverArtURL != "" && len(song.CoverData) == 0 {
+			// Restore already-cached cover immediately.
+			if len(song.CoverData) > 0 {
+				glib.IdleAdd(func() bool {
+					mw.setAlbumCover(song.CoverData)
+					return false
+				})
+			} else if song.CoverArtURL != "" {
 				imgData, err := audio.DownloadImage(song.CoverArtURL)
 				if err == nil {
 					song.CoverData = imgData

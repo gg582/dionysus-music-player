@@ -615,11 +615,11 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkButton" id="BtnLinkServices">
-                        <property name="name">BtnLinkServices</property>
+                      <object class="GtkButton" id="BtnOpenProvider">
+                        <property name="name">BtnOpenProvider</property>
                         <property name="visible">True</property>
                         <property name="can-focus">True</property>
-                        <property name="tooltip-text">Link third-party music services</property>
+                        <property name="tooltip-text">Open from Music Provider</property>
                         <child>
                           <object class="GtkBox">
                             <property name="visible">True</property>
@@ -642,7 +642,7 @@
                             <child>
                               <object class="GtkLabel">
                                 <property name="visible">True</property>
-                                <property name="label">Link Services</property>
+                                <property name="label">Open from Music Provider</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>

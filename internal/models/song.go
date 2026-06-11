@@ -15,7 +15,7 @@ type Chapter struct {
 	End   time.Duration
 }
 
-// Song represents a single music file entry or CD track.
+// Song represents a single music file entry, CD track, or provider stream.
 type Song struct {
 	Name        string
 	Location    string
@@ -36,4 +36,11 @@ type Song struct {
 	// Prescan results populated asynchronously by the audio engine.
 	Waveform *Waveform
 	Chapters []Chapter
+	// Provider fields (for tracks sourced from a remote provider)
+	ProviderID      string
+	ProviderAddress string
+	ProviderTrackID string
+	ProviderName    string
+	StreamURL       string // resolved ephemeral URL
+	StreamHeaders   map[string]string
 }
