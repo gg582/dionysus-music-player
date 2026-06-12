@@ -273,7 +273,7 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 	}
 
 	p.mu.Lock()
-	p.streamer = streamer
+	p.streamer = newEOFDetector(streamer)
 	p.format = format
 	p.ctrl = &beep.Ctrl{Streamer: p.streamer, Paused: false}
 	p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
@@ -313,7 +313,7 @@ func (p *Player) LoadStream(url string, headers map[string]string) error {
 	}
 
 	p.mu.Lock()
-	p.streamer = streamer
+	p.streamer = newEOFDetector(streamer)
 	p.format = format
 	p.ctrl = &beep.Ctrl{Streamer: p.streamer, Paused: false}
 	p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
@@ -370,7 +370,7 @@ func (p *Player) LoadCD(device string, trackNum int) error {
 	p.format = beep.Format{SampleRate: 44100, NumChannels: 2, Precision: 2}
 	p.cdDev = dev
 	streamer := cdrom.NewTrackStreamer(dev, *target)
-	p.streamer = streamer
+	p.streamer = newEOFDetector(streamer)
 	p.ctrl = &beep.Ctrl{Streamer: p.streamer, Paused: false}
 	p.resampled = beep.Resample(4, p.format.SampleRate, targetSampleRate, p.ctrl)
 	p.volume = &effects.Volume{Streamer: p.resampled, Base: 2, Volume: 0}
@@ -606,4 +606,52 @@ func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.streamer != nil && p.state == StatePlaying
+}
+
+type eofDetector struct {
+	beep.StreamSeekCloser
+	mu  sync.Mutex
+	eof bool
+}
+
+func newEOFDetector(s beep.StreamSeekCloser) *eofDetector {
+	if s == nil {
+		return nil
+	}
+	return &eofDetector{StreamSeekCloser: s}
+}
+
+func (d *eofDetector) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = d.StreamSeekCloser.Stream(samples)
+	if !ok {
+		d.mu.Lock()
+		d.eof = true
+		d.mu.Unlock()
+	}
+	return n, ok
+}
+
+func (d *eofDetector) IsEOF() bool {
+	if d == nil {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.eof
+}
+
+func (d *eofDetector) Seek(p int) error {
+	d.mu.Lock()
+	d.eof = false
+	d.mu.Unlock()
+	return d.StreamSeekCloser.Seek(p)
+}
+
+func (p *Player) IsEOF() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if detector, ok := p.streamer.(*eofDetector); ok {
+		return detector.IsEOF()
+	}
+	return false
 }

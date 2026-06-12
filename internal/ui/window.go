@@ -57,6 +57,8 @@ type MainWindow struct {
 	songs               []models.Song
 	rows                []*songRow
 	selectedIdx         int
+	playingIdx          int
+	transitioning       bool
 	ticker              *time.Ticker
 	tickerDone          chan struct{}
 	syncedLyrics        []audio.LRCLine
@@ -99,6 +101,8 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	mw := &MainWindow{
 		songs:       make([]models.Song, 0),
 		selectedIdx: -1,
+		playingIdx:  -1,
+		transitioning: false,
 		providerMgr: mgr,
 	}
 
@@ -219,6 +223,9 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 				if mw.settingProgress {
 					return
 				}
+				if mw.seeking {
+					return
+				}
 				val := mw.progressBar.GetValue()
 				length := mw.player.Length()
 				if length > 0 {
@@ -292,6 +299,14 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 		})
 		mw.progressBar.Connect("button-release-event", func() bool {
 			mw.seeking = false
+			if mw.player != nil {
+				val := mw.progressBar.GetValue()
+				length := mw.player.Length()
+				if length > 0 {
+					pos := time.Duration(float64(length) * val / 10000.0)
+					mw.player.Seek(pos)
+				}
+			}
 			return false
 		})
 	}
@@ -1122,6 +1137,7 @@ func (mw *MainWindow) refreshRowDisplay(i int) {
 }
 
 func (mw *MainWindow) onPlay() {
+	mw.stopTicker()
 	if mw.listBox == nil {
 		return
 	}
@@ -1146,6 +1162,10 @@ func (mw *MainWindow) onPlay() {
 		go mw.playProviderTrack(idx)
 		return
 	}
+
+	defer func() {
+		mw.transitioning = false
+	}()
 
 	// Check if the same song/segment is already loaded (paused or playing)
 	alreadyLoaded := false
@@ -1179,6 +1199,7 @@ func (mw *MainWindow) onPlay() {
 		log.Println("Failed to play:", err)
 		return
 	}
+	mw.playingIdx = idx
 	// Re-apply current volume so ReplayGain is refreshed for the new track.
 	if mw.volumeScale != nil {
 		mw.player.SetVolume(mw.volumeScale.GetValue())
@@ -1195,6 +1216,7 @@ func (mw *MainWindow) onPlay() {
 // playProviderTrack resolves the stream URL for a provider track and then plays it.
 func (mw *MainWindow) playProviderTrack(idx int) {
 	if idx < 0 || idx >= len(mw.songs) {
+		mw.transitioning = false
 		return
 	}
 	song := &mw.songs[idx]
@@ -1204,6 +1226,7 @@ func (mw *MainWindow) playProviderTrack(idx int) {
 	cancel()
 	if err != nil {
 		glib.IdleAdd(func() bool {
+			mw.transitioning = false
 			mw.showErrorDialog(fmt.Sprintf("Failed to resolve stream: %v", err))
 			return false
 		})
@@ -1215,24 +1238,30 @@ func (mw *MainWindow) playProviderTrack(idx int) {
 
 	glib.IdleAdd(func() bool {
 		if mw.closing.Load() {
+			mw.transitioning = false
 			return false
 		}
 		if mw.player == nil {
+			mw.transitioning = false
 			return false
 		}
 
 		alreadyLoaded := !mw.player.IsCDLoaded() && mw.player.CurrentFile() == streamURL
 		if !alreadyLoaded {
 			if err := mw.player.LoadStream(streamURL, song.StreamHeaders); err != nil {
+				mw.transitioning = false
 				mw.showErrorDialog(fmt.Sprintf("Failed to load stream: %v", err))
 				return false
 			}
 			mw.player.SetDuration(time.Duration(song.Duration) * time.Second)
 		}
 		if err := mw.player.Play(); err != nil {
+			mw.transitioning = false
 			log.Println("Failed to play:", err)
 			return false
 		}
+		mw.playingIdx = idx
+		mw.transitioning = false
 		if mw.volumeScale != nil {
 			mw.player.SetVolume(mw.volumeScale.GetValue())
 		}
@@ -1260,6 +1289,7 @@ func (mw *MainWindow) onPause() {
 }
 
 func (mw *MainWindow) onStop() {
+	mw.transitioning = false
 	if mw.player != nil {
 		mw.player.Stop()
 	}
@@ -1311,11 +1341,16 @@ func (mw *MainWindow) onPrev() {
 	if mw.listBox == nil || len(mw.songs) == 0 {
 		return
 	}
-	row := mw.listBox.GetSelectedRow()
-	if row == nil {
-		return
+	currentIdx := mw.playingIdx
+	if currentIdx < 0 || currentIdx >= len(mw.songs) {
+		row := mw.listBox.GetSelectedRow()
+		if row != nil {
+			currentIdx = row.GetIndex()
+		} else {
+			currentIdx = 0
+		}
 	}
-	prevIdx := row.GetIndex() - 1
+	prevIdx := currentIdx - 1
 	if prevIdx < 0 {
 		prevIdx = 0
 	}
@@ -1327,11 +1362,15 @@ func (mw *MainWindow) playNext() bool {
 	if mw.listBox == nil || len(mw.songs) == 0 {
 		return false
 	}
-	row := mw.listBox.GetSelectedRow()
-	if row == nil {
-		return false
+	currentIdx := mw.playingIdx
+	if currentIdx < 0 || currentIdx >= len(mw.songs) {
+		row := mw.listBox.GetSelectedRow()
+		if row != nil {
+			currentIdx = row.GetIndex()
+		} else {
+			currentIdx = 0
+		}
 	}
-	currentIdx := row.GetIndex()
 	var nextIdx int
 	if mw.shuffle && len(mw.songs) > 1 {
 		for {
@@ -1423,8 +1462,14 @@ func (mw *MainWindow) startTicker() {
 						mw.progressBar.SetValue(pct)
 						mw.settingProgress = false
 					}
-					if pos >= length && length > 0 {
-						mw.onTrackFinished()
+
+					// Enforce auto-advance immediately when player finishes (IsEOF) with transitioning lock.
+					if mw.player.IsEOF() {
+						if !mw.transitioning {
+							mw.transitioning = true
+							mw.onTrackFinished()
+							return false
+						}
 					}
 
 					// Sync lyrics: current line in cyan, karaoke gold fill across it
@@ -1850,8 +1895,8 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 
 func (mw *MainWindow) refreshPlayingHighlight() {
 	playingIdx := -1
-	if mw.player != nil && mw.player.IsPlaying() && mw.selectedIdx >= 0 && mw.selectedIdx < len(mw.songs) {
-		playingIdx = mw.selectedIdx
+	if mw.player != nil && mw.player.IsPlaying() && mw.playingIdx >= 0 && mw.playingIdx < len(mw.songs) {
+		playingIdx = mw.playingIdx
 	}
 	for i := 0; i < len(mw.rows); i++ {
 		sr := mw.rows[i]
@@ -1897,6 +1942,11 @@ func (mw *MainWindow) removeSelectedSong() {
 		mw.selectedIdx = -1
 	} else if mw.selectedIdx > idx {
 		mw.selectedIdx--
+	}
+	if mw.playingIdx == idx {
+		mw.playingIdx = -1
+	} else if mw.playingIdx > idx {
+		mw.playingIdx--
 	}
 	mw.refreshPlayingHighlight()
 	mw.updateQueueHeader()

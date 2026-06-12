@@ -9,48 +9,14 @@ import (
 	"math"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/gopxl/beep"
 )
 
 // decodeFFmpegStream decodes a network URL via FFmpeg stdout streaming.
-// Seeking is not supported (Len() == 0, Seek() returns an error).
+// Seeking is supported by restarting the process with -ss parameter.
 func decodeFFmpegStream(url string, headers map[string]string) (beep.StreamSeekCloser, beep.Format, error) {
-	args := []string{
-		"-hide_banner",
-		"-loglevel", "error",
-	}
-	for k, v := range headers {
-		args = append(args, "-headers", fmt.Sprintf("%s: %s\r\n", k, v))
-	}
-	// Reconnect when YouTube resets the TLS connection mid-stream.
-	// Without these flags FFmpeg exits (often with code 0) after an
-	// inconsistent amount of decoded audio, causing truncated playback.
-	args = append(args,
-		"-reconnect", "1",
-		"-reconnect_streamed", "1",
-		"-i", url,
-		"-vn",
-		"-f", "f32le",
-		"-acodec", "pcm_f32le",
-		"-ac", "2",
-		"-ar", fmt.Sprint(ffmpegFallbackSampleRate),
-		"pipe:1",
-	)
-	cmd := exec.Command("ffmpeg", args...)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, beep.Format{}, fmt.Errorf("ffmpeg stdout pipe: %w", err)
-	}
-
-	stderr := &bytes.Buffer{}
-	cmd.Stderr = stderr
-
-	if err := cmd.Start(); err != nil {
-		return nil, beep.Format{}, fmt.Errorf("ffmpeg start: %w", err)
-	}
-
 	format := beep.Format{
 		SampleRate:  ffmpegFallbackSampleRate,
 		NumChannels: 2,
@@ -58,32 +24,22 @@ func decodeFFmpegStream(url string, headers map[string]string) (beep.StreamSeekC
 	}
 
 	fs := &ffmpegStream{
-		stdout: stdout,
-		cmd:    cmd,
-		format: format,
-		stderr: stderr,
-		done:   make(chan struct{}),
+		url:     url,
+		headers: headers,
+		format:  format,
 	}
 
-	// Watch FFmpeg so we can surface connection errors that would otherwise
-	// be invisible (stderr was previously discarded and FFmpeg sometimes
-	// exits with code 0 after a mid-stream connection reset).
-	go func() {
-		defer close(fs.done)
-		if err := cmd.Wait(); err != nil {
-			fs.waitErr = err
-			if msg := strings.TrimSpace(stderr.String()); msg != "" {
-				log.Printf("ffmpeg stream error: %v: %s", err, msg)
-			} else {
-				log.Printf("ffmpeg stream error: %v", err)
-			}
-		}
-	}()
+	if err := fs.Seek(0); err != nil {
+		return nil, beep.Format{}, err
+	}
 
 	return fs, format, nil
 }
 
 type ffmpegStream struct {
+	mu      sync.Mutex
+	url     string
+	headers map[string]string
 	stdout  io.ReadCloser
 	cmd     *exec.Cmd
 	pos     int
@@ -95,12 +51,28 @@ type ffmpegStream struct {
 }
 
 func (s *ffmpegStream) Stream(samples [][2]float64) (int, bool) {
+	s.mu.Lock()
 	if s.err != nil {
+		s.mu.Unlock()
+		return 0, false
+	}
+	stdout := s.stdout
+	s.mu.Unlock()
+
+	if stdout == nil {
 		return 0, false
 	}
 
 	buf := make([]byte, len(samples)*8)
-	n, err := s.stdout.Read(buf)
+	n, err := stdout.Read(buf)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stdout != stdout {
+		return 0, true
+	}
+
 	if err != nil {
 		if err == io.EOF {
 			frames := n / 8
@@ -129,6 +101,8 @@ func (s *ffmpegStream) Stream(samples [][2]float64) (int, bool) {
 }
 
 func (s *ffmpegStream) Err() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return s.err
 	}
@@ -140,17 +114,117 @@ func (s *ffmpegStream) Len() int {
 }
 
 func (s *ffmpegStream) Position() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.pos
 }
 
 func (s *ffmpegStream) Seek(p int) error {
-	return fmt.Errorf("seek not supported on live streams")
+	s.mu.Lock()
+	oldStdout := s.stdout
+	oldCmd := s.cmd
+	oldDone := s.done
+	s.mu.Unlock()
+
+	if oldCmd != nil {
+		if oldStdout != nil {
+			_ = oldStdout.Close()
+		}
+		if oldCmd.Process != nil {
+			_ = oldCmd.Process.Kill()
+		}
+		if oldDone != nil {
+			<-oldDone
+		}
+	}
+
+	offsetSeconds := float64(p) / float64(s.format.SampleRate)
+
+	args := []string{
+		"-hide_banner",
+		"-loglevel", "error",
+	}
+	for k, v := range s.headers {
+		args = append(args, "-headers", fmt.Sprintf("%s: %s\r\n", k, v))
+	}
+	if offsetSeconds > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", offsetSeconds))
+	}
+	args = append(args,
+		"-reconnect", "1",
+		"-reconnect_streamed", "1",
+		"-i", s.url,
+		"-vn",
+		"-f", "f32le",
+		"-acodec", "pcm_f32le",
+		"-ac", "2",
+		"-ar", fmt.Sprint(s.format.SampleRate),
+		"pipe:1",
+	)
+	cmd := exec.Command("ffmpeg", args...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("ffmpeg stdout pipe: %w", err)
+	}
+
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("ffmpeg start: %w", err)
+	}
+
+	done := make(chan struct{})
+
+	s.mu.Lock()
+	s.stdout = stdout
+	s.cmd = cmd
+	s.stderr = stderr
+	s.done = done
+	s.pos = p
+	s.waitErr = nil
+	s.err = nil
+	s.mu.Unlock()
+
+	go func(c *exec.Cmd, d chan struct{}, se *bytes.Buffer) {
+		defer close(d)
+		err := c.Wait()
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		if s.cmd == c {
+			if err != nil {
+				s.waitErr = err
+				if msg := strings.TrimSpace(se.String()); msg != "" {
+					log.Printf("ffmpeg stream error: %v: %s", err, msg)
+				} else {
+					log.Printf("ffmpeg stream error: %v", err)
+				}
+			}
+		}
+	}(cmd, done, stderr)
+
+	return nil
 }
 
 func (s *ffmpegStream) Close() error {
-	_ = s.stdout.Close()
-	_ = s.cmd.Process.Kill()
-	<-s.done
+	s.mu.Lock()
+	stdout := s.stdout
+	cmd := s.cmd
+	done := s.done
+	s.mu.Unlock()
+
+	if stdout != nil {
+		_ = stdout.Close()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	if done != nil {
+		<-done
+	}
 	return nil
 }
 
