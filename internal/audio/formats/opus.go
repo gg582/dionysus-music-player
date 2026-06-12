@@ -1,4 +1,4 @@
-package audio
+package formats
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gopxl/beep"
 	"github.com/pion/opus"
 	"github.com/pion/opus/pkg/oggreader"
@@ -15,7 +16,7 @@ const opusSampleRate = 48000
 const opusChannels = 2
 const opusMaxFrameSamples = 5760
 
-func decodeOpus(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
+func DecodeOpus(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
 	ogg, _, err := oggreader.NewWith(rsc)
 	if err != nil {
 		rsc.Close()
@@ -51,5 +52,5 @@ func decodeOpus(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, erro
 		decoded = append(decoded, pcm[:n*opusChannels]...)
 	}
 
-	return newFloat32Streamer(decoded, opusChannels, opusSampleRate, rsc.Close)
+	return utils.NewFloat32Streamer(decoded, opusChannels, opusSampleRate, rsc.Close)
 }

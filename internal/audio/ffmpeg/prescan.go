@@ -1,4 +1,4 @@
-package audio
+package ffmpeg
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gg582/gozik/internal/audio/pcm"
 	"github.com/gg582/gozik/internal/models"
 	"github.com/moonfdd/ffmpeg-go/ffcommon"
 	"github.com/moonfdd/ffmpeg-go/libavcodec"
@@ -18,7 +19,7 @@ import (
 // Prescan spawns a background analysis of path using FFmpeg CGO.
 // It returns chapter metadata and a 200-point RMS waveform.
 func Prescan(path string) (*models.Waveform, []models.Chapter, error) {
-	if err := validateRawPCMSize(path); err != nil {
+	if err := pcm.ValidateRawPCMSize(path); err != nil {
 		return nil, nil, err
 	}
 
@@ -29,7 +30,7 @@ func Prescan(path string) (*models.Waveform, []models.Chapter, error) {
 
 	var fmt_ *libavformat.AVInputFormat
 	var dict *libavutil.AVDictionary
-	if isRawPCM(path) {
+	if pcm.IsRawPCM(path) {
 		fmt_ = libavformat.AvFindInputFormat("s16le")
 		libavutil.AvDictSet(&dict, "sample_rate", "44100", 0)
 		libavutil.AvDictSet(&dict, "channels", "2", 0)

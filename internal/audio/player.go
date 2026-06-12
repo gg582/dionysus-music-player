@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gg582/gozik/internal/audio/ffmpeg"
+	"github.com/gg582/gozik/internal/audio/formats"
+	"github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gg582/gozik/internal/cdrom"
 	"github.com/gopxl/beep"
 	"github.com/gopxl/beep/effects"
@@ -127,69 +130,7 @@ func (p *Player) initSpeaker() error {
 // ProbeDuration decodes a file just far enough to read its total length, then
 // closes it. Used to compute the queue's total play time without playback.
 func ProbeDuration(filename string) (time.Duration, error) {
-	if IsStreamURL(filename) {
-		return 0, nil
-	}
-	f, err := os.Open(filename)
-	if err != nil {
-		return 0, err
-	}
-	ext := strings.ToLower(filename[strings.LastIndex(filename, ".")+1:])
-	var streamer beep.StreamSeekCloser
-	var format beep.Format
-	switch ext {
-	case "mp3":
-		streamer, format, err = mp3.Decode(f)
-	case "flac":
-		streamer, format, err = flac.Decode(f)
-	case "wav":
-		streamer, format, err = wav.Decode(f)
-	case "ogg":
-		streamer, format, err = vorbis.Decode(f)
-	case "opus":
-		streamer, format, err = decodeOpus(f)
-	case "aac":
-		streamer, format, err = decodeADTS(f)
-	case "aiff", "aif":
-		streamer, format, err = decodeAIFF(f)
-	case "pcm", "raw":
-		pcmFormat, detectErr := DetectPcmFormat(filename)
-		if detectErr != nil {
-			f.Close()
-			return 0, detectErr
-		}
-		info, statErr := f.Stat()
-		if statErr != nil {
-			f.Close()
-			return 0, statErr
-		}
-		frameSize, frameErr := rawPCMFrameSize(pcmFormat)
-		if frameErr != nil {
-			f.Close()
-			return 0, frameErr
-		}
-		f.Close()
-		return time.Second * time.Duration(info.Size()/int64(frameSize)) / rawPCMSampleRate, nil
-	default:
-		if _, ok := gaudioFormatForExt(ext); ok {
-			f.Close()
-			streamer, format, err = decodeGaudioExt(filename, ext)
-			break
-		}
-		f.Close()
-		return 0, fmt.Errorf("unsupported format: %s", ext)
-	}
-	if err != nil {
-		f.Close()
-		return 0, err
-	}
-	defer streamer.Close()
-
-	n := streamer.Len()
-	if n <= 0 || format.SampleRate == 0 {
-		return 0, nil
-	}
-	return time.Second * time.Duration(n) / time.Duration(format.SampleRate), nil
+	return formats.ProbeDuration(filename)
 }
 
 func (p *Player) Load(filename string) error {
@@ -211,9 +152,9 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 	var format beep.Format
 	useSegment := false
 
-	if IsStreamURL(filename) {
+	if ffmpeg.IsStreamURL(filename) {
 		f.Close()
-		streamer, format, err = decodeFFmpegStream(filename, nil)
+		streamer, format, err = ffmpeg.DecodeStream(filename, nil)
 	} else {
 		switch ext {
 		case "mp3":
@@ -229,31 +170,31 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 			streamer, format, err = vorbis.Decode(f)
 			useSegment = true
 		case "opus":
-			streamer, format, err = decodeOpus(f)
+			streamer, format, err = formats.DecodeOpus(f)
 			useSegment = true
 		case "aac":
-			streamer, format, err = decodeADTS(f)
+			streamer, format, err = formats.DecodeADTS(f)
 			useSegment = true
 		case "aiff", "aif":
-			streamer, format, err = decodeAIFF(f)
+			streamer, format, err = formats.DecodeAIFF(f)
 			useSegment = true
 		case "pcm", "raw":
 			f.Close()
-			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
+			streamer, format, err = ffmpeg.DecodeSegment(filename, startSec, endSec)
 		default:
-			if _, ok := gaudioFormatForExt(ext); ok {
+			if _, ok := formats.GaudioFormatForExt(ext); ok {
 				f.Close()
-				streamer, format, err = decodeGaudioExt(filename, ext)
+				streamer, format, err = formats.DecodeGaudioExt(filename, ext)
 				useSegment = true
 				break
 			}
 			f.Close()
-			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
+			streamer, format, err = ffmpeg.DecodeSegment(filename, startSec, endSec)
 		}
 
 		if err != nil {
 			f.Close()
-			streamer, format, err = decodeFFmpegSegment(filename, startSec, endSec)
+			streamer, format, err = ffmpeg.DecodeSegment(filename, startSec, endSec)
 			if err != nil {
 				return err
 			}
@@ -261,7 +202,7 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 	}
 
 	if useSegment && (startSec > 0 || endSec > 0) {
-		seg, segErr := NewSegmentStreamer(streamer, format, startSec, endSec)
+		seg, segErr := formats.NewSegmentStreamer(streamer, format, startSec, endSec)
 		if segErr == nil {
 			streamer = seg
 		}
@@ -288,7 +229,7 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 	p.replayGain = 0
 	p.mu.Unlock()
 
-	if gain, err := ExtractReplayGain(filename); err == nil && gain != 0 {
+	if gain, err := utils.ExtractReplayGain(filename); err == nil && gain != 0 {
 		// Convert dB to log2 scale: log2(10^(db/20)) = db * log2(10) / 20
 		p.mu.Lock()
 		p.replayGain = gain * (math.Log2(10) / 20)
@@ -302,7 +243,7 @@ func (p *Player) LoadSegment(filename string, startSec, endSec int) error {
 func (p *Player) LoadStream(url string, headers map[string]string) error {
 	p.reset()
 
-	streamer, format, err := decodeFFmpegStream(url, headers)
+	streamer, format, err := ffmpeg.DecodeStream(url, headers)
 	if err != nil {
 		return err
 	}

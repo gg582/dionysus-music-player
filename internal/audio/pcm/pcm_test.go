@@ -1,4 +1,4 @@
-package audio
+package pcm
 
 import (
 	"bytes"
@@ -9,9 +9,9 @@ import (
 
 func TestDecodePCMValidLength(t *testing.T) {
 	data := []byte{0x00, 0x40, 0x00, 0xc0} // 4 bytes = 1 frame
-	s, format, err := decodePCM(bytes.NewReader(data))
+	s, format, err := DecodePCM(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodePCM() error = %v", err)
+		t.Fatalf("DecodePCM() error = %v", err)
 	}
 	defer s.Close()
 
@@ -25,7 +25,7 @@ func TestDecodePCMValidLength(t *testing.T) {
 
 func TestDecodePCMInvalidLength(t *testing.T) {
 	data := []byte{0x00, 0x40, 0x00} // 3 bytes, not multiple of 4
-	_, _, err := decodePCM(bytes.NewReader(data))
+	_, _, err := DecodePCM(bytes.NewReader(data))
 	if err == nil {
 		t.Fatal("expected error for raw pcm data length not multiple of 4")
 	}
@@ -46,13 +46,13 @@ func TestValidateRawPCMSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := validateRawPCMSize(validPath); err != nil {
+	if err := ValidateRawPCMSize(validPath); err != nil {
 		t.Fatalf("valid raw pcm: %v", err)
 	}
-	if err := validateRawPCMSize(invalidPath); err == nil {
+	if err := ValidateRawPCMSize(invalidPath); err == nil {
 		t.Fatal("invalid raw pcm: expected error")
 	}
-	if err := validateRawPCMSize(otherPath); err != nil {
+	if err := ValidateRawPCMSize(otherPath); err != nil {
 		t.Fatalf("non-raw file: %v", err)
 	}
 }

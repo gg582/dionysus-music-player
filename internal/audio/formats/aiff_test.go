@@ -1,4 +1,4 @@
-package audio
+package formats
 
 import (
 	"bytes"
@@ -16,9 +16,9 @@ func TestDecodeAIFFParsesChunkPaddingAndSoundOffset(t *testing.T) {
 	}
 	data := buildAIFF(t, "AIFF", 2, 2, 16, 44100, "NONE", audioData, 3, true)
 
-	streamer, format, err := decodeAIFF(bytes.NewReader(data))
+	streamer, format, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 
@@ -47,9 +47,9 @@ func TestDecodeAIFCSowtParsesLittleEndianPCM(t *testing.T) {
 	}
 	data := buildAIFF(t, "AIFC", 1, 2, 16, 48000, "sowt", audioData, 0, false)
 
-	streamer, format, err := decodeAIFF(bytes.NewReader(data))
+	streamer, format, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 
@@ -75,9 +75,9 @@ func TestDecodeAIFFParses24BitBigEndianPCM(t *testing.T) {
 	}
 	data := buildAIFF(t, "AIFF", 1, 2, 24, 96000, "NONE", audioData, 0, false)
 
-	streamer, format, err := decodeAIFF(bytes.NewReader(data))
+	streamer, format, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 
@@ -100,9 +100,9 @@ func TestDecodeAIFCParsesFloat32PCM(t *testing.T) {
 	binary.BigEndian.PutUint32(audioData[4:8], math.Float32bits(-0.5))
 	data := buildAIFF(t, "AIFC", 1, 2, 32, 44100, "fl32", audioData, 0, false)
 
-	streamer, format, err := decodeAIFF(bytes.NewReader(data))
+	streamer, format, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 
@@ -122,9 +122,9 @@ func TestDecodeAIFCParsesFloat32PCM(t *testing.T) {
 func TestDecodeAIFCParsesRawUnsigned8BitPCM(t *testing.T) {
 	data := buildAIFF(t, "AIFC", 1, 2, 8, 44100, "raw ", []byte{0x00, 0xff}, 0, false)
 
-	streamer, _, err := decodeAIFF(bytes.NewReader(data))
+	streamer, _, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 
@@ -152,9 +152,9 @@ func TestDecodeAIFCParsesCompandedPCM(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data := buildAIFF(t, "AIFC", 1, 2, 8, 44100, tt.compression, tt.data, 0, false)
 
-			streamer, _, err := decodeAIFF(bytes.NewReader(data))
+			streamer, _, err := DecodeAIFF(bytes.NewReader(data))
 			if err != nil {
-				t.Fatalf("decodeAIFF() error = %v", err)
+				t.Fatalf("DecodeAIFF() error = %v", err)
 			}
 			defer streamer.Close()
 
@@ -177,9 +177,9 @@ func TestAIFFStreamerSeek(t *testing.T) {
 	}
 	data := buildAIFF(t, "AIFF", 1, 3, 16, 44100, "NONE", audioData, 0, false)
 
-	streamer, _, err := decodeAIFF(bytes.NewReader(data))
+	streamer, _, err := DecodeAIFF(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("decodeAIFF() error = %v", err)
+		t.Fatalf("DecodeAIFF() error = %v", err)
 	}
 	defer streamer.Close()
 

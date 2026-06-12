@@ -1,4 +1,4 @@
-package audio
+package ffmpeg
 
 import (
 	"bytes"
@@ -10,30 +10,18 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/gg582/gozik/internal/audio/pcm"
 	"github.com/gopxl/beep"
 )
 
 const ffmpegFallbackSampleRate = beep.SampleRate(48000)
 
-func isRawPCM(path string) bool {
-	p := strings.ToLower(path)
-	return strings.HasSuffix(p, ".raw") || strings.HasSuffix(p, ".pcm")
+func Decode(path string) (beep.StreamSeekCloser, beep.Format, error) {
+	return DecodeSegment(path, 0, 0)
 }
 
-func validateRawPCMSize(path string) error {
-	if !isRawPCM(path) {
-		return nil
-	}
-	_, err := DetectPcmFormat(path)
-	return err
-}
-
-func decodeFFmpeg(path string) (beep.StreamSeekCloser, beep.Format, error) {
-	return decodeFFmpegSegment(path, 0, 0)
-}
-
-func decodeFFmpegSegment(path string, startSec, endSec int) (beep.StreamSeekCloser, beep.Format, error) {
-	if err := validateRawPCMSize(path); err != nil {
+func DecodeSegment(path string, startSec, endSec int) (beep.StreamSeekCloser, beep.Format, error) {
+	if err := pcm.ValidateRawPCMSize(path); err != nil {
 		return nil, beep.Format{}, err
 	}
 	tmp, err := os.CreateTemp("", "gozik-ffmpeg-*.pcm")
@@ -57,8 +45,8 @@ func decodeFFmpegSegment(path string, startSec, endSec int) (beep.StreamSeekClos
 	if endSec > startSec {
 		args = append(args, "-t", fmt.Sprintf("%d", endSec-startSec))
 	}
-	if isRawPCM(path) {
-		pcmFormat, err := DetectPcmFormat(path)
+	if pcm.IsRawPCM(path) {
+		pcmFormat, err := pcm.DetectPcmFormat(path)
 		if err != nil {
 			os.Remove(tmpPath)
 			return nil, beep.Format{}, err

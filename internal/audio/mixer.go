@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gg582/gozik/internal/audio/ffmpeg"
+	"github.com/gg582/gozik/internal/audio/midi"
+	"github.com/gg582/gozik/internal/audio/pcm"
 	"github.com/gopxl/beep"
 )
 
@@ -251,18 +254,18 @@ func (m *Mixer) Close() {
 
 func (m *Mixer) decodePath(path string) (*TrackSlot, error) {
 	if isMIDI(path) {
-		s, _, err := decodeMIDI(path)
+		s, _, err := midi.Decode(path)
 		if err != nil {
 			return nil, err
 		}
 		return &TrackSlot{stream: s}, nil
 	}
 
-	if err := validateRawPCMSize(path); err != nil {
+	if err := pcm.ValidateRawPCMSize(path); err != nil {
 		return nil, err
 	}
 
-	s, _, err := decodeFFmpeg(path)
+	s, _, err := ffmpeg.Decode(path)
 	if err != nil {
 		return nil, err
 	}

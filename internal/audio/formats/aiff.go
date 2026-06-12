@@ -1,4 +1,4 @@
-package audio
+package formats
 
 import (
 	"encoding/binary"
@@ -46,7 +46,7 @@ type aiffInfo struct {
 	dataBytes   int64
 }
 
-func decodeAIFF(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
+func DecodeAIFF(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
 	info, err := parseAIFF(r)
 	if err != nil {
 		return nil, beep.Format{}, err

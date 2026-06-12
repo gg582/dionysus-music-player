@@ -1,4 +1,4 @@
-package audio
+package ffmpeg
 
 import (
 	"os/exec"
@@ -28,7 +28,7 @@ func TestDecodeFFmpegRawPCM(t *testing.T) {
 		t.Skipf("could not generate raw PCM fixture: %v: %s", err, out)
 	}
 
-	streamer, format, err := decodeFFmpeg(path)
+	streamer, format, err := Decode(path)
 	if err != nil {
 		t.Fatalf("decodeFFmpeg() error = %v", err)
 	}
@@ -73,7 +73,7 @@ func TestDecodeFFmpegWMA(t *testing.T) {
 		t.Skipf("could not generate WMA fixture: %v: %s", err, out)
 	}
 
-	streamer, format, err := decodeFFmpeg(path)
+	streamer, format, err := Decode(path)
 	if err != nil {
 		t.Fatalf("decodeFFmpeg() error = %v", err)
 	}

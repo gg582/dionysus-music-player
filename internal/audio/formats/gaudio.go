@@ -1,8 +1,9 @@
-package audio
+package formats
 
 import (
 	"fmt"
 
+	"github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gopxl/beep"
 	"github.com/zeozeozeo/gaudio"
 )
@@ -12,10 +13,10 @@ func decodeGaudio(path string, format gaudio.AudioFormat) (beep.StreamSeekCloser
 	if err != nil {
 		return nil, beep.Format{}, err
 	}
-	return newFloat32Streamer(segment.Data, segment.Channels, int(segment.SampleRate), nil)
+	return utils.NewFloat32Streamer(segment.Data, segment.Channels, int(segment.SampleRate), nil)
 }
 
-func gaudioFormatForExt(ext string) (gaudio.AudioFormat, bool) {
+func GaudioFormatForExt(ext string) (gaudio.AudioFormat, bool) {
 	switch ext {
 	case "mod":
 		return gaudio.FormatMOD, true
@@ -30,8 +31,8 @@ func gaudioFormatForExt(ext string) (gaudio.AudioFormat, bool) {
 	}
 }
 
-func decodeGaudioExt(path, ext string) (beep.StreamSeekCloser, beep.Format, error) {
-	format, ok := gaudioFormatForExt(ext)
+func DecodeGaudioExt(path, ext string) (beep.StreamSeekCloser, beep.Format, error) {
+	format, ok := GaudioFormatForExt(ext)
 	if !ok {
 		return nil, beep.Format{}, fmt.Errorf("unsupported gaudio format: %s", ext)
 	}

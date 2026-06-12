@@ -1,15 +1,16 @@
-package audio
+package formats
 
 import (
 	"fmt"
 	"io"
 
+	"github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gopxl/beep"
 	"github.com/skrashevich/go-aac/pkg/adts"
 	"github.com/skrashevich/go-aac/pkg/decoder"
 )
 
-func decodeADTS(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
+func DecodeADTS(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
 	data, err := io.ReadAll(rsc)
 	if err != nil {
 		rsc.Close()
@@ -47,7 +48,7 @@ func decodeADTS(rsc io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, erro
 		offset += hdr.FrameLength
 	}
 
-	return newFloat32Streamer(decoded, aacChannelCount(dec.Config.ChanConfig), dec.Config.SampleRate, rsc.Close)
+	return utils.NewFloat32Streamer(decoded, aacChannelCount(dec.Config.ChanConfig), dec.Config.SampleRate, rsc.Close)
 }
 
 func aacChannelCount(config int) int {

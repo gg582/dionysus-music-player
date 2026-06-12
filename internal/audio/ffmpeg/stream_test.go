@@ -1,4 +1,4 @@
-package audio
+package ffmpeg
 
 import (
 	"math"
@@ -47,7 +47,7 @@ func TestFFmpegStreamSeek(t *testing.T) {
 	defer server.Close()
 
 	// 3. Decode HTTP stream
-	streamer, format, err := decodeFFmpegStream(server.URL, nil)
+	streamer, format, err := DecodeStream(server.URL, nil)
 	if err != nil {
 		t.Fatalf("decodeFFmpegStream failed: %v", err)
 	}

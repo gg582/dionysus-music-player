@@ -1,4 +1,4 @@
-package audio
+package ffmpeg
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 	"github.com/gopxl/beep"
 )
 
-// decodeFFmpegStream decodes a network URL via FFmpeg stdout streaming.
+// DecodeStream decodes a network URL via FFmpeg stdout streaming.
 // Seeking is supported by restarting the process with -ss parameter.
-func decodeFFmpegStream(url string, headers map[string]string) (beep.StreamSeekCloser, beep.Format, error) {
+func DecodeStream(url string, headers map[string]string) (beep.StreamSeekCloser, beep.Format, error) {
 	format := beep.Format{
 		SampleRate:  ffmpegFallbackSampleRate,
 		NumChannels: 2,

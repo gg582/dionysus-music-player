@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/gg582/gozik/internal/audio"
+	"github.com/gg582/gozik/internal/audio/ffmpeg"
+	"github.com/gg582/gozik/internal/audio/formats"
+	audioutils "github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gg582/gozik/internal/cdrom"
 	"github.com/gg582/gozik/internal/config"
 	"github.com/gg582/gozik/internal/models"
@@ -61,7 +64,7 @@ type MainWindow struct {
 	transitioning       bool
 	ticker              *time.Ticker
 	tickerDone          chan struct{}
-	syncedLyrics        []audio.LRCLine
+	syncedLyrics        []audioutils.LRCLine
 	currentLyricLine    int
 	lyricTagNow         *gtk.TextTag
 	lyricTagSung        *gtk.TextTag
@@ -824,7 +827,7 @@ func (mw *MainWindow) onOpenCD() {
 		toc := cdrom.MusicBrainzTOC(tracks)
 		if toc != "" {
 			go func() {
-				release, err := audio.SearchMusicBrainzDisc(toc)
+				release, err := audioutils.SearchMusicBrainzDisc(toc)
 				if err != nil {
 					log.Printf("MusicBrainz disc lookup failed: %v", err)
 					return
@@ -892,7 +895,7 @@ func (mw *MainWindow) onOpenStream() {
 // e.g. from command-line arguments: `gozik song1.flac song2.mp3`.
 func (mw *MainWindow) LoadFiles(paths []string) {
 	for _, f := range paths {
-		if audio.IsStreamURL(f) {
+		if ffmpeg.IsStreamURL(f) {
 			song := models.Song{Name: f, Location: f}
 			mw.songs = append(mw.songs, song)
 			mw.appendSongToList(song)
@@ -922,15 +925,15 @@ func (mw *MainWindow) LoadFiles(paths []string) {
 			var err error
 			switch ext {
 			case "m3u", "m3u8":
-				entries, err = audio.ParseM3U(f)
+				entries, err = formats.ParseM3U(f)
 			case "pls":
-				entries, err = audio.ParsePLS(f)
+				entries, err = formats.ParsePLS(f)
 			case "xspf":
-				entries, err = audio.ParseXSPF(f)
+				entries, err = formats.ParseXSPF(f)
 			}
 			utils.ErrorHandler(err, "parsing playlist", logLevel, "warn")
 			for _, entry := range entries {
-				if audio.IsStreamURL(entry) {
+				if ffmpeg.IsStreamURL(entry) {
 					song := models.Song{Name: entry, Location: entry}
 					mw.songs = append(mw.songs, song)
 					mw.appendSongToList(song)
@@ -949,7 +952,7 @@ func (mw *MainWindow) LoadFiles(paths []string) {
 			continue
 		}
 		if ext == "cue" {
-			songs, err := audio.ParseCUE(f)
+			songs, err := formats.ParseCUE(f)
 			if err != nil {
 				log.Printf("Failed to parse CUE %s: %v", f, err)
 				continue
@@ -1051,7 +1054,7 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 	if !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
 		loc := song.Location
 		go func() {
-			d, err := audio.ProbeDuration(loc)
+			d, err := formats.ProbeDuration(loc)
 			if err != nil || d <= 0 {
 				return
 			}
@@ -1079,7 +1082,7 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 // enrichSongRow looks up a title/artist for a freshly-added file (embedded
 // metadata having come up empty) and updates its queue row in place.
 func (mw *MainWindow) enrichSongRow(loc, query string) {
-	audio.QueueMusicBrainzSearch(query, func(rec *audio.MBRecording, err error) {
+	audioutils.QueueMusicBrainzSearch(query, func(rec *audioutils.MBRecording, err error) {
 		if err != nil || rec == nil {
 			return
 		}
@@ -1577,7 +1580,7 @@ func newSongFromFile(path string) models.Song {
 		Name:     filepath.Base(path),
 		Location: path,
 	}
-	if meta, err := audio.ExtractMetadata(path); err == nil && meta != nil {
+	if meta, err := audioutils.ExtractMetadata(path); err == nil && meta != nil {
 		song.Artist = meta.Artist
 		song.Title = meta.Title
 		song.Album = meta.Album
@@ -1634,7 +1637,7 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 		if embeddedLyrics != "" {
 			lyrics = embeddedLyrics
 		} else if !isCD && location != "" {
-			if meta, err := audio.ExtractMetadata(location); err == nil && meta != nil && meta.Lyrics != "" {
+			if meta, err := audioutils.ExtractMetadata(location); err == nil && meta != nil && meta.Lyrics != "" {
 				lyrics = meta.Lyrics
 				song.Lyrics = meta.Lyrics
 			}
@@ -1659,7 +1662,7 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 					d = int(mw.player.Length().Seconds())
 				}
 
-				if online, err := audio.SearchLyrics(title, artist, album, d); err == nil && online != "" {
+				if online, err := audioutils.SearchLyrics(title, artist, album, d); err == nil && online != "" {
 					lyrics = online
 					song.Lyrics = online
 					break
@@ -1670,7 +1673,7 @@ func (mw *MainWindow) loadLyrics(song *models.Song) {
 		}
 
 		// 3. Parse synced lyrics.
-		synced := audio.ParseSyncedLyrics(lyrics)
+		synced := audioutils.ParseSyncedLyrics(lyrics)
 		displayText := lyrics
 		if len(synced) > 0 {
 			var texts []string
@@ -1732,7 +1735,7 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 					return false
 				})
 			} else if song.CoverArtURL != "" {
-				imgData, err := audio.DownloadImage(song.CoverArtURL)
+				imgData, err := audioutils.DownloadImage(song.CoverArtURL)
 				if err == nil {
 					song.CoverData = imgData
 					glib.IdleAdd(func() bool {
@@ -1746,7 +1749,7 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 
 		// 1. Try metadata first (artist/album/title + embedded cover)
 		if song.Artist == "" || song.Album == "" || song.Title == "" || len(song.CoverData) == 0 {
-			meta, err := audio.ExtractMetadata(song.Location)
+			meta, err := audioutils.ExtractMetadata(song.Location)
 			if err == nil && meta != nil {
 				if song.Artist == "" {
 					song.Artist = meta.Artist
@@ -1778,7 +1781,7 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 				query = fmt.Sprintf("%s %s", song.Artist, song.Title)
 			}
 
-			audio.QueueMusicBrainzSearch(query, func(rec *audio.MBRecording, err error) {
+			audioutils.QueueMusicBrainzSearch(query, func(rec *audioutils.MBRecording, err error) {
 				if err != nil || rec == nil {
 					return
 				}
@@ -1828,7 +1831,7 @@ func (mw *MainWindow) loadSongInfo(song *models.Song) {
 
 				// Only download remote cover if no embedded cover exists
 				if len(song.CoverData) == 0 && song.CoverArtURL != "" {
-					imgData, err := audio.DownloadImage(song.CoverArtURL)
+					imgData, err := audioutils.DownloadImage(song.CoverArtURL)
 					if err == nil {
 						glib.IdleAdd(func() bool {
 							mw.setAlbumCover(imgData)
@@ -1952,12 +1955,12 @@ func (mw *MainWindow) removeSelectedSong() {
 	mw.updateQueueHeader()
 }
 
-func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscRelease) {
+func (mw *MainWindow) applyCDMetadata(device string, release *audioutils.MBDiscRelease) {
 	if mw.closing.Load() {
 		return
 	}
 
-	mbTrackMap := make(map[int]audio.MBDiscTrack)
+	mbTrackMap := make(map[int]audioutils.MBDiscTrack)
 	for _, t := range release.Tracks {
 		mbTrackMap[t.Position] = t
 	}
@@ -2011,7 +2014,7 @@ func (mw *MainWindow) applyCDMetadata(device string, release *audio.MBDiscReleas
 			}
 			if len(cur.CoverData) == 0 && cur.CoverArtURL != "" {
 				go func(s *models.Song) {
-					imgData, err := audio.DownloadImage(s.CoverArtURL)
+					imgData, err := audioutils.DownloadImage(s.CoverArtURL)
 					if err == nil {
 						glib.IdleAdd(func() bool {
 							s.CoverData = imgData

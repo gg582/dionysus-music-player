@@ -1,4 +1,4 @@
-package audio
+package pcm
 
 import (
 	"encoding/binary"
@@ -92,7 +92,7 @@ func DetectPcmFormat(filePath string) (string, error) {
 	}
 }
 
-func rawPCMFrameSize(format string) (int, error) {
+func RawPCMFrameSize(format string) (int, error) {
 	switch format {
 	case "s16le":
 		return 4, nil
@@ -151,11 +151,11 @@ type pcmStreamer struct {
 	rc     io.Closer
 }
 
-func decodePCM(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
-	return decodePCMWithFormat(r, 44100)
+func DecodePCM(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
+	return DecodePCMWithFormat(r, 44100)
 }
 
-func decodePCMWithFormat(r io.Reader, sampleRate beep.SampleRate) (beep.StreamSeekCloser, beep.Format, error) {
+func DecodePCMWithFormat(r io.Reader, sampleRate beep.SampleRate) (beep.StreamSeekCloser, beep.Format, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, beep.Format{}, err
@@ -232,4 +232,19 @@ func (s *pcmStreamer) Close() error {
 		return s.rc.Close()
 	}
 	return nil
+}
+
+// IsRawPCM returns true if path has a raw pcm/raw extension.
+func IsRawPCM(path string) bool {
+	p := strings.ToLower(path)
+	return strings.HasSuffix(p, ".raw") || strings.HasSuffix(p, ".pcm")
+}
+
+// ValidateRawPCMSize validates size limits for raw PCM files.
+func ValidateRawPCMSize(path string) error {
+	if !IsRawPCM(path) {
+		return nil
+	}
+	_, err := DetectPcmFormat(path)
+	return err
 }

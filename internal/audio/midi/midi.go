@@ -1,4 +1,4 @@
-package audio
+package midi
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/midi"
 )
+
+const engineSampleRate = 48000
 
 var _ embed.FS
 
@@ -23,11 +25,11 @@ type midiCloser struct {
 
 func (midiCloser) Close() error { return nil }
 
-// decodeMIDI synthesizes a MIDI file into a seekable PCM stream using the
+// Decode synthesizes a MIDI file into a seekable PCM stream using the
 // embedded General MIDI SoundFont. The returned format is always 48 kHz stereo float32.
-func decodeMIDI(path string) (beep.StreamSeekCloser, beep.Format, error) {
+func Decode(path string) (beep.StreamSeekCloser, beep.Format, error) {
 	if len(defaultSoundFont) == 0 {
-		return nil, beep.Format{}, fmt.Errorf("no embedded SoundFont; place a .sf2 file at internal/audio/assets/soundfont.sf2")
+		return nil, beep.Format{}, fmt.Errorf("no embedded SoundFont; place a .sf2 file at internal/audio/midi/assets/soundfont.sf2")
 	}
 
 	sf, err := midi.NewSoundFont(io.NopCloser(bytes.NewReader(defaultSoundFont)))

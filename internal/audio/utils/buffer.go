@@ -1,4 +1,4 @@
-package audio
+package utils
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ type float32Streamer struct {
 	closeFn  func() error
 }
 
-func newFloat32Streamer(data []float32, channels int, sampleRate int, closeFn func() error) (beep.StreamSeekCloser, beep.Format, error) {
+func NewFloat32Streamer(data []float32, channels int, sampleRate int, closeFn func() error) (beep.StreamSeekCloser, beep.Format, error) {
 	if channels < 1 || channels > 2 {
 		if closeFn != nil {
 			_ = closeFn()
