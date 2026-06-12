@@ -24,6 +24,7 @@ A simple desktop music player for Linux, macOS, and Windows. It plays local audi
 - PLS
 - XSPF
 - CUE sheets
+- Gozik Playlist(Multi Origin Playback Support)
 
 **Other Sources**
 
