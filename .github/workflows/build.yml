@@ -67,7 +67,7 @@ jobs:
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
           CC: ${{ matrix.cc }}
-          PKG_CONFIG_LIBDIR: ${{ matrix.arch != 'amd64' && format('/usr/lib/{0}/pkgconfig:/usr/share/pkgconfig', matrix.cc-target) || '' }}
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.cc-target }}/pkgconfig:/usr/share/pkgconfig
         run: |
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
       - uses: actions/upload-artifact@v4
