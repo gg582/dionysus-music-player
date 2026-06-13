@@ -117,15 +117,20 @@ func newFileDialog(mw *MainWindow, mode dialogMode) *fileDialog {
 	titlebar.PackStart(d.crumbBox, true, true, 0)
 
 	if mode == modeSave {
+		nameBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
+		nameBox.SetName("fd-filename-box")
+
 		nameLbl, _ := gtk.LabelNew("Name:")
 		nameLbl.SetName("fd-filename-label")
-		titlebar.PackEnd(nameLbl, false, false, 0)
+		nameBox.PackStart(nameLbl, false, false, 0)
 
 		d.filenameEntry, _ = gtk.EntryNew()
 		d.filenameEntry.SetName("fd-filename")
 		d.filenameEntry.SetPlaceholderText("playlist.gopl")
 		d.filenameEntry.SetSizeRequest(220, -1)
-		titlebar.PackEnd(d.filenameEntry, false, false, 0)
+		nameBox.PackStart(d.filenameEntry, false, false, 0)
+
+		titlebar.PackEnd(nameBox, false, false, 0)
 	} else {
 		d.search, _ = gtk.SearchEntryNew()
 		d.search.SetName("fd-search")
