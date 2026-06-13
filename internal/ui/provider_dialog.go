@@ -9,6 +9,7 @@ import (
 	musicv1 "github.com/gg582/gozik/api/music/v1"
 	"github.com/gg582/gozik/internal/models"
 	"github.com/gg582/gozik/internal/provider"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/gotk3/gotk3/pango"
@@ -91,6 +92,7 @@ func (mw *MainWindow) OpenProviderDialog() {
 	if len(providers) > 0 {
 		providerCombo.SetActive(0)
 	}
+	mw.themeComboPopup(providerCombo)
 	providerRow.PackStart(providerLbl, false, false, 0)
 	providerRow.PackStart(providerCombo, true, true, 0)
 	box.PackStart(providerRow, false, false, 0)
@@ -108,6 +110,7 @@ func (mw *MainWindow) OpenProviderDialog() {
 	modeCombo.Append("tracks", "Tracks")
 	modeCombo.Append("playlists", "Playlists")
 	modeCombo.SetActive(0)
+	mw.themeComboPopup(modeCombo)
 	searchRow.PackStart(searchEntry, true, true, 0)
 	searchRow.PackStart(modeCombo, false, false, 0)
 	searchRow.PackStart(searchBtn, false, false, 0)
@@ -417,4 +420,46 @@ func (mw *MainWindow) OpenProviderDialog() {
 	box.ShowAll()
 	dialog.ShowAll()
 	dialog.Run()
+}
+
+// themeComboPopup tags the dropdown window of a GtkComboBox with the same
+// light/dark theme class as the main window, so the scrollbar symbol buttons
+// and other chrome inside the popup follow the gozik theme instead of the
+// default GTK theme.
+func (mw *MainWindow) themeComboPopup(combo *gtk.ComboBoxText) {
+	combo.Connect("popup", func() {
+		glib.IdleAdd(func() bool {
+			list := gtk.WindowListToplevels()
+			if list == nil {
+				return false
+			}
+			list.Foreach(func(item interface{}) {
+				win, ok := item.(*gtk.Window)
+				if !ok {
+					return
+				}
+				if win.GetWindowType() != gtk.WINDOW_POPUP {
+					return
+				}
+				hint := win.GetTypeHint()
+				if hint != gdk.WINDOW_TYPE_HINT_DROPDOWN_MENU &&
+					hint != gdk.WINDOW_TYPE_HINT_POPUP_MENU &&
+					hint != gdk.WINDOW_TYPE_HINT_COMBO {
+					return
+				}
+				ctx, err := win.GetStyleContext()
+				if err != nil || ctx == nil {
+					return
+				}
+				ctx.RemoveClass(themeClassLight)
+				ctx.RemoveClass(themeClassDark)
+				if mw.isDarkTheme() {
+					ctx.AddClass(themeClassDark)
+				} else {
+					ctx.AddClass(themeClassLight)
+				}
+			})
+			return false
+		})
+	})
 }

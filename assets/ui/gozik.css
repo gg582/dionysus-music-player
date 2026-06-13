@@ -215,6 +215,22 @@ scrollbar slider {
 }
 scrollbar slider:hover { background-color: rgba(255,255,255,0.20); }
 
+/* scrollbar stepper buttons (up/down arrow symbols) */
+scrollbar button {
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @text2;
+}
+scrollbar button:hover  { background-color: rgba(255,255,255,0.05); color: @text1; }
+scrollbar button:active { background-color: rgba(95,211,224,0.16); color: @cyan_bright; }
+scrollbar button:disabled { color: @text3; }
+
 /* ---------- lyrics panel ---------- */
 #LyricsScroll {
   background-color: rgba(255,255,255,0.02);
@@ -480,6 +496,16 @@ window.theme-light scrollbar slider {
   background-color: rgba(0,0,0,0.12);
 }
 window.theme-light scrollbar slider:hover { background-color: rgba(0,0,0,0.22); }
+
+window.theme-light scrollbar button {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #5A6270;
+}
+window.theme-light scrollbar button:hover  { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
+window.theme-light scrollbar button:active { background-color: rgba(95,211,224,0.16); color: #008EA0; }
+window.theme-light scrollbar button:disabled { color: #8A93A6; }
 
 /* ---------- lyrics panel ---------- */
 window.theme-light #LyricsScroll {
