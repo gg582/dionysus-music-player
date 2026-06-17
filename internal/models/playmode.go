@@ -1,5 +1,14 @@
 package models
 
+// PlaybackState represents the current transport state.
+type PlaybackState int
+
+const (
+	PlaybackStateStopped PlaybackState = iota
+	PlaybackStatePlaying
+	PlaybackStatePaused
+)
+
 // PlayMode controls what happens when a track finishes.
 type PlayMode int
 

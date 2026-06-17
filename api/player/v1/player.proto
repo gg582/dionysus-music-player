@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package player.v1;
+
+option go_package = "github.com/gg582/gozik/api/player/v1;playerv1";
+
+import "api/music/v1/music_provider.proto";
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PlaybackState {
+  PLAYBACK_STATE_UNSPECIFIED = 0;
+  PLAYBACK_STATE_STOPPED = 1;
+  PLAYBACK_STATE_PLAYING = 2;
+  PLAYBACK_STATE_PAUSED = 3;
+}
+
+enum RepeatMode {
+  REPEAT_MODE_UNSPECIFIED = 0;
+  REPEAT_MODE_SEQUENTIAL = 1;
+  REPEAT_MODE_REPEAT_ALL = 2;
+  REPEAT_MODE_REPEAT_ONE = 3;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_PLAYBACK_STATE_CHANGED = 1;
+  EVENT_TYPE_TRACK_CHANGED = 2;
+  EVENT_TYPE_POSITION_CHANGED = 3;
+  EVENT_TYPE_QUEUE_CHANGED = 4;
+  EVENT_TYPE_VOLUME_CHANGED = 5;
+  EVENT_TYPE_REPEAT_MODE_CHANGED = 6;
+  EVENT_TYPE_SHUFFLE_CHANGED = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Shared Messages
+// ---------------------------------------------------------------------------
+
+message Track {
+  int32 index = 1;
+  string name = 2;
+  string location = 3;
+  string device = 4;
+  int32 track_num = 5;
+  bool is_cd = 6;
+  string artist = 7;
+  string title = 8;
+  string album = 9;
+  string album_year = 10;
+  int32 duration_seconds = 11;
+  string cover_art_url = 12;
+  int32 start_offset = 13;
+  int32 end_offset = 14;
+  string provider_id = 15;
+  string provider_name = 16;
+  string provider_track_id = 17;
+  string stream_url = 18;
+}
+
+message Queue {
+  repeated Track tracks = 1;
+  int32 current_index = 2;
+}
+
+message Status {
+  PlaybackState playback_state = 1;
+  int32 current_index = 2;
+  int64 position_ms = 3;
+  int64 length_ms = 4;
+  double volume = 5;
+  bool muted = 6;
+  RepeatMode repeat_mode = 7;
+  bool shuffle = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Request / Response Messages
+// ---------------------------------------------------------------------------
+
+message Empty {}
+
+message Volume {
+  double volume = 1;
+}
+
+message Position {
+  int64 position_ms = 1;
+}
+
+message Mute {
+  bool muted = 1;
+}
+
+message PlayIndexRequest {
+  int32 index = 1;
+}
+
+message RemoveRequest {
+  repeated int32 indices = 1;
+}
+
+message QueueRequest {
+  repeated string paths = 1;
+}
+
+message PlaylistRequest {
+  string path = 1;
+}
+
+message RepeatModeRequest {
+  RepeatMode mode = 1;
+}
+
+message ShuffleRequest {
+  bool enabled = 1;
+}
+
+message SubscribeRequest {}
+
+message PlayerEvent {
+  EventType type = 1;
+  Status status = 2;
+  Track track = 3;
+  int64 position_ms = 4;
+}
+
+// ---------------------------------------------------------------------------
+// CD
+// ---------------------------------------------------------------------------
+
+message CDDevice {
+  string device = 1;
+  bool supported = 2;
+}
+
+message CDTrack {
+  int32 number = 1;
+  int32 start_lba = 2;
+  int32 end_lba = 3;
+  int32 length_frames = 4;
+  bool is_audio = 5;
+}
+
+message GetCDDevicesRequest {}
+message GetCDDevicesResponse {
+  repeated CDDevice devices = 1;
+}
+
+message ReadCDRequest {
+  string device = 1;
+}
+message ReadCDResponse {
+  string device = 1;
+  repeated CDTrack tracks = 2;
+}
+
+message LoadCDRequest {
+  string device = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Music Provider
+// ---------------------------------------------------------------------------
+
+message ProviderInfo {
+  string id = 1;
+  string name = 2;
+  string address = 3;
+}
+
+message ListProvidersRequest {}
+message ListProvidersResponse {
+  repeated ProviderInfo providers = 1;
+}
+
+message SearchTracksRequest {
+  string provider_id = 1;
+  string query = 2;
+  int32 limit = 3;
+}
+message SearchTracksResponse {
+  repeated music.v1.Track tracks = 1;
+}
+
+message SearchPlaylistsRequest {
+  string provider_id = 1;
+  string query = 2;
+  int32 limit = 3;
+}
+message SearchPlaylistsResponse {
+  repeated music.v1.Playlist playlists = 1;
+}
+
+message ProviderTrackRequest {
+  string provider_id = 1;
+  string track_id = 2;
+}
+message GetProviderTrackDetailsResponse {
+  music.v1.Track track = 1;
+}
+message ResolveProviderStreamResponse {
+  string stream_url = 1;
+  map<string, string> headers = 2;
+}
+
+message GetProviderPlaylistDetailsRequest {
+  string provider_id = 1;
+  string playlist_id = 2;
+  int32 limit = 3;
+}
+message GetProviderPlaylistDetailsResponse {
+  music.v1.Playlist playlist = 1;
+  repeated music.v1.Track tracks = 2;
+}
+
+message AddProviderTrackRequest {
+  string provider_id = 1;
+  string track_id = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Service Definition
+// ---------------------------------------------------------------------------
+
+service PlayerService {
+  // Playback control
+  rpc Play(Empty) returns (Empty);
+  rpc Pause(Empty) returns (Empty);
+  rpc Stop(Empty) returns (Empty);
+  rpc Next(Empty) returns (Empty);
+  rpc Previous(Empty) returns (Empty);
+  rpc PlayIndex(PlayIndexRequest) returns (Empty);
+
+  // Transport
+  rpc Seek(Position) returns (Empty);
+  rpc SetVolume(Volume) returns (Empty);
+  rpc GetVolume(Empty) returns (Volume);
+  rpc SetMute(Mute) returns (Empty);
+  rpc GetMute(Empty) returns (Mute);
+
+  // Queue / playlist
+  rpc GetQueue(Empty) returns (Queue);
+  rpc AddToQueue(QueueRequest) returns (Empty);
+  rpc RemoveFromQueue(RemoveRequest) returns (Empty);
+  rpc ClearQueue(Empty) returns (Empty);
+  rpc LoadPlaylist(PlaylistRequest) returns (Empty);
+  rpc SavePlaylist(PlaylistRequest) returns (Empty);
+
+  // Modes
+  rpc SetRepeatMode(RepeatModeRequest) returns (Empty);
+  rpc GetRepeatMode(Empty) returns (RepeatModeRequest);
+  rpc SetShuffle(ShuffleRequest) returns (Empty);
+  rpc GetShuffle(Empty) returns (ShuffleRequest);
+
+  // Status
+  rpc GetStatus(Empty) returns (Status);
+  rpc GetCurrentTrack(Empty) returns (Track);
+
+  // CD
+  rpc GetCDDevices(GetCDDevicesRequest) returns (GetCDDevicesResponse);
+  rpc ReadCD(ReadCDRequest) returns (ReadCDResponse);
+  rpc LoadCD(LoadCDRequest) returns (Empty);
+
+  // Music Provider
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  rpc SearchTracks(SearchTracksRequest) returns (SearchTracksResponse);
+  rpc SearchPlaylists(SearchPlaylistsRequest) returns (SearchPlaylistsResponse);
+  rpc GetProviderTrackDetails(ProviderTrackRequest) returns (GetProviderTrackDetailsResponse);
+  rpc ResolveProviderStream(ProviderTrackRequest) returns (ResolveProviderStreamResponse);
+  rpc GetProviderPlaylistDetails(GetProviderPlaylistDetailsRequest) returns (GetProviderPlaylistDetailsResponse);
+  rpc AddProviderTrack(AddProviderTrackRequest) returns (Empty);
+
+  // Events
+  rpc SubscribeEvents(SubscribeRequest) returns (stream PlayerEvent);
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -15,6 +16,11 @@ import (
 const appID = "com.gosuda.gozik.player"
 
 func main() {
+	if hasHelpFlag(os.Args[1:]) {
+		printHelp()
+		os.Exit(0)
+	}
+
 	configureRuntime()
 
 	app, err := gtk.ApplicationNew(appID, glib.APPLICATION_FLAGS_NONE)
@@ -60,4 +66,68 @@ func configureRuntime() {
 		runtime.GOMAXPROCS(2)
 	}
 	debug.SetGCPercent(200)
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+func printHelp() {
+	fmt.Print(`Gozik - GTK music player with gRPC remote control
+
+Usage:
+  gozik [file_or_playlist ...]
+
+Remote control:
+  Gozik exposes a gRPC server on 127.0.0.1:50051 by default.
+  Set GOZIK_GRPC_ADDR to change the listen address.
+
+  Proto: api/player/v1/player.proto
+
+Available RPCs (player.v1.PlayerService):
+  Playback:   Play, Pause, Stop, Next, Previous, PlayIndex
+  Transport:  Seek, SetVolume, GetVolume, SetMute, GetMute
+  Queue:      GetQueue, AddToQueue, RemoveFromQueue, ClearQueue
+  Playlist:   LoadPlaylist, SavePlaylist
+  Modes:      SetRepeatMode, GetRepeatMode, SetShuffle, GetShuffle
+  Status:     GetStatus, GetCurrentTrack
+  CD:         GetCDDevices, ReadCD, LoadCD
+  Provider:   ListProviders, SearchTracks, SearchPlaylists,
+              GetProviderTrackDetails, ResolveProviderStream,
+              GetProviderPlaylistDetails, AddProviderTrack
+  Events:     SubscribeEvents (server streaming)
+
+Examples:
+  # Playback
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/Play
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/Pause
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/GetStatus
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/GetQueue
+
+  # Queue / playlist
+  grpcurl -plaintext -d '{"paths":["/path/to/song.flac"]}' \
+      127.0.0.1:50051 player.v1.PlayerService/AddToQueue
+  grpcurl -plaintext -d '{"path":"/path/to/playlist.gopl"}' \
+      127.0.0.1:50051 player.v1.PlayerService/SavePlaylist
+
+  # CD
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/GetCDDevices
+  grpcurl -plaintext -d '{"device":"/dev/sr0"}' \
+      127.0.0.1:50051 player.v1.PlayerService/LoadCD
+
+  # Music Provider
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/ListProviders
+  grpcurl -plaintext -d '{"provider_id":"yt-music","query":"led zeppelin","limit":5}' \
+      127.0.0.1:50051 player.v1.PlayerService/SearchTracks
+  grpcurl -plaintext -d '{"provider_id":"yt-music","track_id":"TRACK_ID"}' \
+      127.0.0.1:50051 player.v1.PlayerService/AddProviderTrack
+
+  # Events
+  grpcurl -plaintext 127.0.0.1:50051 player.v1.PlayerService/SubscribeEvents
+`)
 }

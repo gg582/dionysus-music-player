@@ -29,12 +29,16 @@ test:
 	go test ./...
 
 PROTOC := protoc
-PROTO_DIR := api/music/v1
+PROTO_DIRS := api/music/v1 api/player/v1
 
 proto:
-	$(PROTOC) --go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		$(PROTO_DIR)/music_provider.proto
+	@for dir in $(PROTO_DIRS); do \
+		for file in $$dir/*.proto; do \
+			$(PROTOC) --go_out=. --go_opt=paths=source_relative \
+				--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+				$$file; \
+		done; \
+	done
 
 icons:
 	@mkdir -p assets/icons/hicolor

@@ -17,6 +17,7 @@ import (
 	audioutils "github.com/gg582/gozik/internal/audio/utils"
 	"github.com/gg582/gozik/internal/cdrom"
 	"github.com/gg582/gozik/internal/config"
+	"github.com/gg582/gozik/internal/grpcserver"
 	"github.com/gg582/gozik/internal/models"
 	"github.com/gg582/gozik/internal/mpris"
 	"github.com/gg582/gozik/internal/playlist"
@@ -86,6 +87,8 @@ type MainWindow struct {
 	themeButton         *gtk.Button
 	fileDialog          *fileDialog
 	mprisServer         *mpris.Server
+	grpcServer          *grpcserver.Server
+	grpcEventPublisher  grpcserver.EventPublisher
 	btnOpenProvider     *gtk.Button
 	providerMgr         *provider.Manager
 	providerCount       int
@@ -326,6 +329,7 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	}
 
 	mw.initMPRIS()
+	mw.initGRPC()
 
 	mw.win.Connect("destroy", func() {
 		mw.onQuit(app)
@@ -681,6 +685,7 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 					mw.muted = false
 					mw.updateVolumeVisual()
 				}
+				mw.publishVolumeChanged()
 			})
 		}
 	}
@@ -717,6 +722,7 @@ func (mw *MainWindow) toggleMute() {
 		}
 	}
 	mw.updateVolumeVisual()
+	mw.publishVolumeChanged()
 }
 
 // updateVolumeVisual swaps the speaker icon and the gray "muted" slider class.
@@ -786,6 +792,7 @@ func (mw *MainWindow) onQuit(app *gtk.Application) {
 		mw.trayIndicator.Close()
 		mw.trayIndicator = nil
 	}
+	mw.closeGRPC()
 	app.Quit()
 }
 
@@ -1471,6 +1478,7 @@ func (mw *MainWindow) updateShuffleButton() {
 			mw.btnShuffle.SetTooltipText("Shuffle off")
 		}
 	}
+	mw.publishShuffleChanged()
 }
 
 func (mw *MainWindow) onToggleRepeat() {
@@ -1495,6 +1503,7 @@ func (mw *MainWindow) updateRepeatButton() {
 	if mw.btnRepeat != nil {
 		mw.btnRepeat.SetTooltipText(mw.playMode.String())
 	}
+	mw.publishRepeatModeChanged()
 }
 
 func (mw *MainWindow) startTicker() {

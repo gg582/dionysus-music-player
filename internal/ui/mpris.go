@@ -3,6 +3,9 @@ package ui
 import (
 	"fmt"
 
+	playerv1 "github.com/gg582/gozik/api/player/v1"
+	"github.com/gg582/gozik/internal/grpcserver"
+	"github.com/gg582/gozik/internal/models"
 	"github.com/gg582/gozik/internal/mpris"
 	"github.com/godbus/dbus/v5"
 	"github.com/gotk3/gotk3/glib"
@@ -95,6 +98,7 @@ func (mw *MainWindow) updateMPRISStatus() {
 		status = "Stopped"
 	}
 	mw.mprisServer.SetPlaybackStatus(status)
+	mw.publishPlaybackStateChanged()
 }
 
 func (mw *MainWindow) updateMPRISMetadata() {
@@ -122,6 +126,7 @@ func (mw *MainWindow) updateMPRISMetadata() {
 	}
 	meta["mpris:length"] = mw.player.Length().Microseconds()
 	mw.mprisServer.SetMetadata(meta)
+	mw.publishTrackChanged()
 }
 
 func (mw *MainWindow) updateMPRISPosition() {
@@ -129,4 +134,77 @@ func (mw *MainWindow) updateMPRISPosition() {
 		return
 	}
 	mw.mprisServer.SetPosition(mw.player.Position().Microseconds())
+	mw.publishPositionChanged()
+}
+
+// ---------------------------------------------------------------------------
+// gRPC event publishing
+// ---------------------------------------------------------------------------
+
+func (mw *MainWindow) publishEvent(eventType playerv1.EventType) {
+	if mw.grpcEventPublisher == nil {
+		return
+	}
+	status := grpcserver.Status{
+		CurrentIndex: mw.playingIdx,
+		Volume:       1.0,
+		Muted:        mw.muted,
+		RepeatMode:   mw.playMode,
+		Shuffle:      mw.shuffle,
+	}
+	if mw.volumeScale != nil {
+		status.Volume = mw.volumeScale.GetValue()
+	}
+	if mw.player != nil {
+		status.Position = mw.player.Position()
+		status.Length = mw.player.Length()
+		switch {
+		case mw.player.IsPlaying():
+			status.PlaybackState = models.PlaybackStatePlaying
+		case mw.player.IsPaused():
+			status.PlaybackState = models.PlaybackStatePaused
+		default:
+			status.PlaybackState = models.PlaybackStateStopped
+		}
+	} else {
+		status.PlaybackState = models.PlaybackStateStopped
+	}
+
+	event := &playerv1.PlayerEvent{
+		Type:       eventType,
+		Status:     grpcserver.StatusToProto(status),
+		PositionMs: status.Position.Milliseconds(),
+	}
+	if status.CurrentIndex >= 0 && status.CurrentIndex < len(mw.songs) {
+		event.Track = grpcserver.SongToProto(status.CurrentIndex, mw.songs[status.CurrentIndex])
+	}
+	mw.grpcEventPublisher.Publish(event)
+}
+
+func (mw *MainWindow) publishPlaybackStateChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_PLAYBACK_STATE_CHANGED)
+}
+
+func (mw *MainWindow) publishTrackChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_TRACK_CHANGED)
+}
+
+func (mw *MainWindow) publishPositionChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_POSITION_CHANGED)
+}
+
+func (mw *MainWindow) publishQueueChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_QUEUE_CHANGED)
+}
+
+func (mw *MainWindow) publishVolumeChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_VOLUME_CHANGED)
+}
+
+func (mw *MainWindow) publishRepeatModeChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_REPEAT_MODE_CHANGED)
+}
+
+func (mw *MainWindow) publishShuffleChanged() {
+	mw.publishEvent(playerv1.EventType_EVENT_TYPE_SHUFFLE_CHANGED)
 }
