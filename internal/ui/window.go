@@ -21,6 +21,7 @@ import (
 	"github.com/gg582/gozik/internal/mpris"
 	"github.com/gg582/gozik/internal/playlist"
 	"github.com/gg582/gozik/internal/provider"
+	"github.com/gg582/gozik/internal/tray"
 	"github.com/gg582/gozik/internal/utils"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -88,6 +89,9 @@ type MainWindow struct {
 	btnOpenProvider     *gtk.Button
 	providerMgr         *provider.Manager
 	providerCount       int
+	app                 *gtk.Application
+	trayIndicator       tray.Indicator
+	btnCloseToTray      *gtk.Button
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -107,6 +111,7 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 		playingIdx:  -1,
 		transitioning: false,
 		providerMgr: mgr,
+		app:         app,
 	}
 
 	gtkSettings, err := gtk.SettingsGetDefault()
@@ -325,6 +330,8 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	mw.win.Connect("destroy", func() {
 		mw.onQuit(app)
 	})
+
+	mw.initTrayIndicator()
 
 	mw.updateProviderButtonVisibility()
 	mw.startProviderPolling()
@@ -605,6 +612,7 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 		"BtnLoadPlaylist": mw.onLoadPlaylist,
 		"BtnRemove":       mw.removeSelectedSong,
 		"BtnTheme":        mw.onThemeToggle,
+		"BtnCloseToTray":  mw.onCloseToTray,
 	}
 
 	for id, handler := range buttons {
@@ -625,6 +633,8 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 				mw.themeButton = btn
 			case "BtnOpenProvider":
 				mw.btnOpenProvider = btn
+			case "BtnCloseToTray":
+				mw.btnCloseToTray = btn
 			}
 		}
 	}
@@ -767,11 +777,59 @@ func (mw *MainWindow) updateQueueHeader() {
 }
 
 func (mw *MainWindow) onQuit(app *gtk.Application) {
+	mw.closing.Store(true)
 	mw.stopTicker()
 	if mw.player != nil {
 		mw.player.Close()
 	}
+	if mw.trayIndicator != nil {
+		mw.trayIndicator.Close()
+		mw.trayIndicator = nil
+	}
 	app.Quit()
+}
+
+func (mw *MainWindow) Present() {
+	if mw.win != nil {
+		mw.win.Present()
+	}
+}
+
+func (mw *MainWindow) initTrayIndicator() {
+	if tray.New == nil {
+		log.Println("tray: no indicator factory available")
+		return
+	}
+	log.Println("tray: creating indicator")
+	mw.trayIndicator = tray.New(tray.Config{
+		IconName: "gozik",
+		Tooltip:  "Gozik",
+		OnShow: func() {
+			glib.IdleAdd(func() bool {
+				mw.Present()
+				return false
+			})
+		},
+		OnQuit: func() {
+			glib.IdleAdd(func() bool {
+				mw.onQuit(mw.app)
+				return false
+			})
+		},
+	})
+	if mw.trayIndicator != nil {
+		mw.trayIndicator.Hide()
+	}
+}
+
+func (mw *MainWindow) onCloseToTray() {
+	log.Println("tray: close-to-tray requested")
+	if mw.win != nil {
+		mw.win.Hide()
+	}
+	if mw.trayIndicator != nil {
+		mw.trayIndicator.Show()
+	}
 }
 
 func (mw *MainWindow) onOpenCD() {

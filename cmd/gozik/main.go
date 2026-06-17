@@ -27,14 +27,22 @@ func main() {
 	// Set up the provider manager; it will auto-discover local services.
 	mgr := provider.NewManager()
 
+	var mainWin *ui.MainWindow
+
 	app.Connect("activate", func() {
+		if mainWin != nil {
+			mainWin.Present()
+			return
+		}
 		win, err := ui.NewMainWindow(app, mgr)
 		if err != nil {
 			log.Fatal("Could not create main window:", err)
 		}
+		mainWin = win
 		win.ShowAll()
 		if len(files) > 0 {
 			win.LoadFiles(files)
+			files = nil
 		}
 	})
 
