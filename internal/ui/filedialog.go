@@ -125,6 +125,7 @@ func newFileDialog(mw *MainWindow, mode dialogMode) *fileDialog {
 		nameBox.PackStart(nameLbl, false, false, 0)
 
 		d.filenameEntry, _ = gtk.EntryNew()
+		installHangulComposition(d.filenameEntry)
 		d.filenameEntry.SetName("fd-filename")
 		d.filenameEntry.SetPlaceholderText("playlist.gopl")
 		d.filenameEntry.SetSizeRequest(220, -1)
@@ -133,6 +134,7 @@ func newFileDialog(mw *MainWindow, mode dialogMode) *fileDialog {
 		titlebar.PackEnd(nameBox, false, false, 0)
 	} else {
 		d.search, _ = gtk.SearchEntryNew()
+		installHangulCompositionSearch(d.search)
 		d.search.SetName("fd-search")
 		d.search.SetPlaceholderText("Search")
 		d.search.SetSizeRequest(120, -1)

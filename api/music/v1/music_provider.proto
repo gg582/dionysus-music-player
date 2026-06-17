@@ -94,7 +94,11 @@ message GetProviderMetadataResponse {
   string auth_url = 5;
 }
 
-message InitiateAuthRequest {}
+message InitiateAuthRequest {
+  // Optional provider-specific parameters. For spotify this can carry a
+  // client_id so the user does not have to set it via environment variables.
+  map<string, string> params = 1;
+}
 
 message InitiateAuthResponse {
   string auth_url = 1;

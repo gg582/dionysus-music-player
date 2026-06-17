@@ -10,7 +10,7 @@ ICON_SIZES := 16 22 24 32 48 64 128 256 512
 
 LDFLAGS := -ldflags "-X github.com/gg582/gozik/internal/config.Prefix=$(PREFIX)"
 
-.PHONY: build run clean deps test icons install uninstall proto
+.PHONY: build run clean deps test icons install uninstall proto installer installer-all
 
 build:
 	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY) $(CMD)
@@ -21,9 +21,17 @@ run: build
 clean:
 	rm -f $(BINARY)
 	rm -rf assets/icons
+	rm -rf installer/dist
 
 deps:
 	go mod tidy
+	cd installer && go mod tidy
+
+installer:
+	cd installer && CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/gozik-installer-$(shell go env GOOS)-$(shell go env GOARCH) .
+
+installer-all:
+	./installer/scripts/build.sh
 
 test:
 	go test ./...

@@ -40,61 +40,61 @@ var mainWindowXML = config.AssetPath("ui/gozik-main-window.glade")
 var mainWindowCSS = config.AssetPath("ui/gozik.css")
 
 type MainWindow struct {
-	win                 *gtk.Window
-	listBox             *gtk.ListBox
-	timeLabel           *gtk.Label
-	totalTimeLabel      *gtk.Label
-	progressBar         *gtk.Scale
-	lyricsView          *gtk.TextView
-	albumCover          *gtk.Image
-	albumTitle          *gtk.Label
-	albumArtist         *gtk.Label
-	albumYear           *gtk.Label
-	queueCount          *gtk.Label
-	volumeScale         *gtk.Scale
-	volumeIcon          *gtk.Image
-	btnPlay             *gtk.Button
-	btnPause            *gtk.Button
-	btnStop             *gtk.Button
-	muted               bool
-	preMuteVol          float64
-	player              *audio.Player
-	songs               []models.Song
-	rows                []*songRow
-	selectedIdx         int
-	playingIdx          int
-	transitioning       bool
-	ticker              *time.Ticker
-	tickerDone          chan struct{}
-	syncedLyrics        []audioutils.LRCLine
-	currentLyricLine    int
-	lyricTagNow         *gtk.TextTag
-	lyricTagSung        *gtk.TextTag
-	lyricsCancel        chan struct{}
-	gtkSettings         *gtk.Settings
-	desktopSettings     *glib.Settings
-	seeking             bool
-	settingProgress     bool
-	closing             atomic.Bool
-	playMode            models.PlayMode
-	btnRepeat           *gtk.Button
-	btnRepeatLabel      *gtk.Label
-	shuffle             bool
-	btnShuffle          *gtk.Button
-	btnShuffleLabel     *gtk.Label
-	themeMode           string
-	inThemeUpdate       bool
-	themeButton         *gtk.Button
-	fileDialog          *fileDialog
-	mprisServer         *mpris.Server
-	grpcServer          *grpcserver.Server
-	grpcEventPublisher  grpcserver.EventPublisher
-	btnOpenProvider     *gtk.Button
-	providerMgr         *provider.Manager
-	providerCount       int
-	app                 *gtk.Application
-	trayIndicator       tray.Indicator
-	btnCloseToTray      *gtk.Button
+	win                *gtk.Window
+	listBox            *gtk.ListBox
+	timeLabel          *gtk.Label
+	totalTimeLabel     *gtk.Label
+	progressBar        *gtk.Scale
+	lyricsView         *gtk.TextView
+	albumCover         *gtk.Image
+	albumTitle         *gtk.Label
+	albumArtist        *gtk.Label
+	albumYear          *gtk.Label
+	queueCount         *gtk.Label
+	volumeScale        *gtk.Scale
+	volumeIcon         *gtk.Image
+	btnPlay            *gtk.Button
+	btnPause           *gtk.Button
+	btnStop            *gtk.Button
+	muted              bool
+	preMuteVol         float64
+	player             *audio.Player
+	songs              []models.Song
+	rows               []*songRow
+	selectedIdx        int
+	playingIdx         int
+	transitioning      bool
+	ticker             *time.Ticker
+	tickerDone         chan struct{}
+	syncedLyrics       []audioutils.LRCLine
+	currentLyricLine   int
+	lyricTagNow        *gtk.TextTag
+	lyricTagSung       *gtk.TextTag
+	lyricsCancel       chan struct{}
+	gtkSettings        *gtk.Settings
+	desktopSettings    *glib.Settings
+	seeking            bool
+	settingProgress    bool
+	closing            atomic.Bool
+	playMode           models.PlayMode
+	btnRepeat          *gtk.Button
+	btnRepeatLabel     *gtk.Label
+	shuffle            bool
+	btnShuffle         *gtk.Button
+	btnShuffleLabel    *gtk.Label
+	themeMode          string
+	inThemeUpdate      bool
+	themeButton        *gtk.Button
+	fileDialog         *fileDialog
+	mprisServer        *mpris.Server
+	grpcServer         *grpcserver.Server
+	grpcEventPublisher grpcserver.EventPublisher
+	btnOpenProvider    *gtk.Button
+	providerMgr        *provider.Manager
+	providerCount      int
+	app                *gtk.Application
+	trayIndicator      tray.Indicator
+	btnCloseToTray     *gtk.Button
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -109,12 +109,12 @@ type songRow struct {
 
 func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, error) {
 	mw := &MainWindow{
-		songs:       make([]models.Song, 0),
-		selectedIdx: -1,
-		playingIdx:  -1,
+		songs:         make([]models.Song, 0),
+		selectedIdx:   -1,
+		playingIdx:    -1,
 		transitioning: false,
-		providerMgr: mgr,
-		app:         app,
+		providerMgr:   mgr,
+		app:           app,
 	}
 
 	gtkSettings, err := gtk.SettingsGetDefault()
@@ -939,6 +939,7 @@ func (mw *MainWindow) onOpenStream() {
 
 	content, _ := dlg.GetContentArea()
 	entry, _ := gtk.EntryNew()
+	installHangulComposition(entry)
 	entry.SetPlaceholderText("https://example.com/stream.mp3")
 	entry.SetMarginTop(12)
 	entry.SetMarginBottom(12)

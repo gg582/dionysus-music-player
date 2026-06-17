@@ -7,6 +7,7 @@ require (
 	github.com/bogem/id3v2/v2 v2.1.4
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/ebitengine/oto/v3 v3.4.0
+	github.com/gg582/hangul-logotype v0.0.0-20251113141148-876a09840fcb
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gopxl/beep v1.4.1
 	github.com/gopxl/beep/v2 v2.1.1

@@ -278,3 +278,26 @@ func (m *Manager) GetPlaylistDetails(ctx context.Context, providerID, playlistID
 	}
 	return res.Playlist, res.Tracks, nil
 }
+
+// InitiateAuth starts the provider's OAuth flow. Optional params are passed
+// straight through to the provider (e.g. spotify uses params["client_id"]).
+func (m *Manager) InitiateAuth(ctx context.Context, providerID string, params map[string]string) (*musicv1.InitiateAuthResponse, error) {
+	m.providersMu.RLock()
+	p := m.providerByID(providerID)
+	m.providersMu.RUnlock()
+	if p == nil || p.client == nil {
+		return nil, fmt.Errorf("provider %s not available", providerID)
+	}
+	return p.client.InitiateAuth(ctx, &musicv1.InitiateAuthRequest{Params: params})
+}
+
+// CompleteAuth completes the provider's OAuth flow.
+func (m *Manager) CompleteAuth(ctx context.Context, providerID string, params map[string]string) (*musicv1.CompleteAuthResponse, error) {
+	m.providersMu.RLock()
+	p := m.providerByID(providerID)
+	m.providersMu.RUnlock()
+	if p == nil || p.client == nil {
+		return nil, fmt.Errorf("provider %s not available", providerID)
+	}
+	return p.client.CompleteAuth(ctx, &musicv1.CompleteAuthRequest{Params: params})
+}

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -97,9 +98,49 @@ func (mw *MainWindow) OpenProviderDialog() {
 	providerRow.PackStart(providerCombo, true, true, 0)
 	box.PackStart(providerRow, false, false, 0)
 
+	// Auth status / action row
+	authRow, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
+	authStatusLbl, _ := gtk.LabelNew("")
+	authStatusLbl.SetHAlign(gtk.ALIGN_START)
+	authStatusLbl.SetHExpand(true)
+	authBtn, _ := gtk.ButtonNewWithLabel("Authenticate")
+	if ctx, err := authBtn.GetStyleContext(); err == nil && ctx != nil {
+		ctx.AddClass("btn-ghost")
+	}
+	authRow.PackStart(authStatusLbl, true, true, 0)
+	authRow.PackEnd(authBtn, false, false, 0)
+	box.PackStart(authRow, false, false, 0)
+
+	updateAuthStatus := func() {
+		providerID := providerCombo.GetActiveID()
+		for _, p := range mw.providerMgr.Providers() {
+			if p.ProviderID == providerID {
+				switch p.AuthStatus {
+				case musicv1.AuthStatus_AUTH_STATUS_AUTHENTICATED:
+					authStatusLbl.SetText("Authenticated")
+					authBtn.SetSensitive(false)
+				case musicv1.AuthStatus_AUTH_STATUS_EXPIRED:
+					authStatusLbl.SetText("Session expired")
+					authBtn.SetLabel("Re-authenticate")
+					authBtn.SetSensitive(true)
+				default:
+					authStatusLbl.SetText("Not authenticated")
+					authBtn.SetLabel("Authenticate")
+					authBtn.SetSensitive(true)
+				}
+				return
+			}
+		}
+		authStatusLbl.SetText("No provider selected")
+		authBtn.SetSensitive(false)
+	}
+	updateAuthStatus()
+	providerCombo.Connect("changed", updateAuthStatus)
+
 	// Search row
 	searchRow, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	searchEntry, _ := gtk.SearchEntryNew()
+	installHangulCompositionSearch(searchEntry)
 	searchEntry.SetPlaceholderText("Search tracks or playlists...")
 	searchEntry.SetHExpand(true)
 	searchBtn, _ := gtk.ButtonNewWithLabel("Search")
@@ -151,6 +192,15 @@ func (mw *MainWindow) OpenProviderDialog() {
 			return false
 		})
 	}
+
+	authBtn.Connect("clicked", func() {
+		providerID := providerCombo.GetActiveID()
+		if providerID == "" {
+			updateStatus("No provider selected.")
+			return
+		}
+		mw.runProviderAuthFlow(dialog, providerID, authBtn, authStatusLbl, updateStatus)
+	})
 
 	clearResults := func() {
 		glib.IdleAdd(func() bool {
@@ -462,4 +512,114 @@ func (mw *MainWindow) themeComboPopup(combo *gtk.ComboBoxText) {
 			return false
 		})
 	})
+}
+
+// runProviderAuthFlow handles InitiateAuth / CompleteAuth for the selected
+// provider. For spotify it prompts for a Client ID first so the user never
+// needs to touch environment variables.
+func (mw *MainWindow) runProviderAuthFlow(parent *gtk.Dialog, providerID string, authBtn *gtk.Button, authStatusLbl *gtk.Label, updateStatus func(string)) {
+	label, _ := authBtn.GetLabel()
+	if label == "Complete Auth" {
+		provider.GoRPC(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, err := mw.providerMgr.CompleteAuth(ctx, providerID, nil)
+			if err != nil {
+				updateStatus(fmt.Sprintf("Auth completion failed: %v", err))
+				return nil
+			}
+			glib.IdleAdd(func() bool {
+				authStatusLbl.SetText("Authenticated")
+				authBtn.SetLabel("Authenticate")
+				authBtn.SetSensitive(false)
+				updateStatus("Authentication successful.")
+				return false
+			})
+			return nil
+		}, func() {}, func(err error) {
+			updateStatus(fmt.Sprintf("Auth error: %v", err))
+		})
+		return
+	}
+
+	params := map[string]string{}
+	if providerID == "spotify" {
+		clientID, ok := mw.promptSpotifyClientID(parent)
+		if !ok {
+			return
+		}
+		params["client_id"] = clientID
+	}
+
+	provider.GoRPC(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		res, err := mw.providerMgr.InitiateAuth(ctx, providerID, params)
+		if err != nil {
+			updateStatus(fmt.Sprintf("Auth start failed: %v", err))
+			return nil
+		}
+		glib.IdleAdd(func() bool {
+			authStatusLbl.SetText("Waiting for browser authentication...")
+			authBtn.SetLabel("Complete Auth")
+			updateStatus("Browser opened. Finish login in the browser, then click Complete Auth.")
+			return false
+		})
+		if res.AuthUrl != "" {
+			go exec.Command("xdg-open", res.AuthUrl).Start()
+		}
+		return nil
+	}, func() {}, func(err error) {
+		updateStatus(fmt.Sprintf("Auth error: %v", err))
+	})
+}
+
+// promptSpotifyClientID asks the user for a Spotify Client ID.
+func (mw *MainWindow) promptSpotifyClientID(parent *gtk.Dialog) (string, bool) {
+	dlg, err := gtk.DialogNewWithButtons(
+		"Spotify Client ID",
+		parent,
+		gtk.DIALOG_MODAL,
+		[]interface{}{"Cancel", gtk.RESPONSE_CANCEL, "OK", gtk.RESPONSE_OK},
+	)
+	if err != nil {
+		return "", false
+	}
+	defer dlg.Destroy()
+	dlg.SetDefaultSize(420, 140)
+
+	content, _ := dlg.GetContentArea()
+	box, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
+	box.SetMarginTop(12)
+	box.SetMarginBottom(12)
+	box.SetMarginStart(12)
+	box.SetMarginEnd(12)
+
+	info, _ := gtk.LabelNew("")
+	info.SetMarkup("Enter your Spotify Client ID. Create one at <a href=\"https://developer.spotify.com/dashboard\">Spotify Developer Dashboard</a> and add <tt>http://127.0.0.1:43827/callback</tt> as a redirect URI.")
+	info.SetLineWrap(true)
+	info.SetHAlign(gtk.ALIGN_START)
+	info.SetSelectable(true)
+	box.PackStart(info, false, false, 0)
+
+	entry, _ := gtk.EntryNew()
+	entry.SetPlaceholderText("Spotify Client ID")
+	entry.SetVisibility(true)
+	box.PackStart(entry, false, false, 0)
+
+	content.PackStart(box, true, true, 0)
+	box.ShowAll()
+
+	dlg.SetDefaultResponse(gtk.RESPONSE_OK)
+	for {
+		resp := dlg.Run()
+		if resp != gtk.RESPONSE_OK {
+			return "", false
+		}
+		clientID, _ := entry.GetText()
+		clientID = strings.TrimSpace(clientID)
+		if clientID != "" {
+			return clientID, true
+		}
+	}
 }

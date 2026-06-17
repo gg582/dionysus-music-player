@@ -1,6 +1,6 @@
 # Gozik
 
-![Gozik Screenshot](./gozik.png)
+![Gozik Logo](./gozik.png)
 
 A simple desktop music player for Linux, macOS, and Windows. It plays local audio files and audio CDs with a minimal GTK3 interface.
 
@@ -85,6 +85,49 @@ Artifacts are written to `dist/`:
 - `dist/gozik-riscv64.AppImage`
 
 > **Note:** `riscv64` requires Debian ports multiarch setup (`dpkg --add-architecture riscv64`). The script attempts to configure this automatically; if it fails, add the ports repository manually.
+
+## Installer
+
+A cross-platform web-based installer is included under `installer/`. It downloads the matching release payload from GitHub and installs Gozik for the current user without administrator privileges.
+
+### Build the installer locally
+
+```bash
+make installer-all
+```
+
+Binaries are written to `installer/dist/`:
+
+- `gozik-installer-linux-amd64`
+- `gozik-installer-linux-arm64`
+- `gozik-installer-linux-riscv64`
+- `gozik-installer-macos-arm64`
+- `gozik-installer-windows-amd64.exe`
+- `gozik-installer-windows-arm64.exe`
+
+### GUI mode
+
+Running an installer binary starts a local web server and opens the setup wizard in your default browser:
+
+```bash
+./installer/dist/gozik-installer-linux-amd64
+```
+
+The wizard lets you choose the version to install, pick an installation directory (via a native folder picker), and optionally add Gozik to PATH or create shortcuts on Windows.
+
+### Headless / unattended mode
+
+For CI or automated installs, use the command-line flags:
+
+```bash
+./gozik-installer-linux-amd64 -headless -version latest -dir "$HOME/.local/share/gozik"
+```
+
+On Windows you can also enable `-add-to-path` and `-create-shortcut`.
+
+### GitHub Actions deployment
+
+The `Release` workflow builds payload archives and installer binaries for every supported platform and uploads them to the GitHub release automatically. See `.github/workflows/release.yml`.
 
 ## Run
 
