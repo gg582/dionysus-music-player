@@ -25,10 +25,22 @@ jobs:
         run: |
           ./build_appimage.sh amd64
 
+      - name: Create installer payload
+        run: |
+          mkdir -p payload
+          cp -L dist/gozik-amd64.AppImage payload/gozik-amd64.AppImage
+          chmod +x payload/gozik-amd64.AppImage
+          tar -czf gozik-payload-linux-amd64.tar.gz -C payload .
+
       - uses: actions/upload-artifact@v4
         with:
           name: gozik-linux-amd64-appimage
           path: dist/gozik-amd64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-payload-linux-amd64
+          path: gozik-payload-linux-amd64.tar.gz
 
   build-windows:
     runs-on: ${{ matrix.runs-on }}
@@ -121,10 +133,20 @@ jobs:
           Copy-Item -Recurse "assets" "${{ matrix.output }}\"
           Compress-Archive -Path "${{ matrix.output }}\*" -DestinationPath "${{ matrix.output }}.zip"
 
+      - name: Create installer payload
+        shell: msys2 {0}
+        run: |
+          tar -czf "gozik-payload-windows-${{ matrix.arch }}.tar.gz" -C "${{ matrix.output }}" .
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output }}
           path: ${{ matrix.output }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-payload-windows-${{ matrix.arch }}
+          path: gozik-payload-windows-${{ matrix.arch }}.tar.gz
 
   build-macos:
     runs-on: macos-latest
@@ -195,6 +217,17 @@ jobs:
           </plist>
           EOF
 
+      - name: Create installer payload
+        run: |
+          mkdir -p payload
+          cp -R Gozik.app payload/
+          tar -czf gozik-payload-macos-arm64.tar.gz -C payload .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-payload-macos-arm64
+          path: gozik-payload-macos-arm64.tar.gz
+
       - name: Create DMG
         run: |
           create-dmg \
@@ -262,14 +295,50 @@ jobs:
           PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.cc-target }}/pkgconfig:/usr/share/pkgconfig
         run: |
           go build -ldflags="-s -w" -o ${{ matrix.output }} ./cmd/gozik
+
+      - name: Create installer payload
+        run: |
+          mkdir -p "payload/gozik"
+          cp "${{ matrix.output }}" payload/gozik/gozik
+          chmod +x payload/gozik/gozik
+          cp -R assets payload/gozik/assets
+          mkdir -p payload/gozik/assets/icons/hicolor/256x256/apps
+          cp gozik.png payload/gozik/assets/icons/hicolor/256x256/apps/gozik.png
+          tar -czf "gozik-payload-linux-${{ matrix.arch }}.tar.gz" -C payload/gozik .
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output }}
           path: ${{ matrix.output }}
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-payload-linux-${{ matrix.arch }}
+          path: gozik-payload-linux-${{ matrix.arch }}.tar.gz
+
+  build-installers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.6'
+
+      - name: Build installer binaries
+        run: |
+          cd installer
+          go mod tidy
+          ./scripts/build.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-installers
+          path: installer/dist/gozik-installer-*
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux-appimage, build-windows, build-macos, build-linux-niche]
+    needs: [build-linux-appimage, build-windows, build-macos, build-linux-niche, build-installers]
     permissions:
       contents: write
     steps:

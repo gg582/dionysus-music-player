@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gozik Installer</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Gozik Installer</h1>
+      <p id="subtitle">Downloading and installing Gozik.</p>
+    </header>
+
+    <main id="wizard">
+      <section id="welcome">
+        <h2>Welcome</h2>
+        <p>This installer will download and install Gozik for your platform.</p>
+        <div class="field">
+          <label for="version">Version to install</label>
+          <input type="text" id="version" value="latest" placeholder="latest or vX.Y.Z" />
+        </div>
+        <button id="btn-next" class="primary">Next</button>
+      </section>
+
+      <section id="options" class="hidden">
+        <h2>Installation Options</h2>
+        <div class="field">
+          <label for="installDir">Install location</label>
+          <div class="dir-input-row">
+            <input type="text" id="installDir" />
+            <button id="btn-browse" type="button">Browse...</button>
+          </div>
+          <p id="dir-error" class="field-error hidden">Please enter an absolute installation path.</p>
+        </div>
+        <div class="field checkbox hidden" id="path-option">
+          <label><input type="checkbox" id="addToPATH" checked /> Add to user PATH</label>
+        </div>
+        <div class="field checkbox hidden" id="shortcut-option">
+          <label><input type="checkbox" id="createShortcut" checked /> Create Start Menu and Desktop shortcuts</label>
+        </div>
+        <div class="buttons">
+          <button id="btn-back">Back</button>
+          <button id="btn-install" class="primary">Install</button>
+        </div>
+      </section>
+
+      <section id="progress" class="hidden">
+        <h2>Installing</h2>
+        <div id="step">Starting...</div>
+        <div class="progress-bar"><div id="progress-fill"></div></div>
+        <pre id="log"></pre>
+      </section>
+
+      <section id="finish" class="hidden">
+        <h2>Installation Complete</h2>
+        <p id="finish-message"></p>
+        <div id="warnings" class="warnings hidden">
+          <strong>Completed with warnings:</strong>
+          <ul id="warnings-list"></ul>
+        </div>
+        <button id="btn-close" class="primary">Close</button>
+      </section>
+
+      <section id="error" class="hidden">
+        <h2>Installation Failed</h2>
+        <p id="error-message"></p>
+        <button id="btn-close-error" class="primary">Close</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

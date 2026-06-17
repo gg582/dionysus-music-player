@@ -1,3 +1,5 @@
 testfiles/
 testfiles/*
 ./gozik
+installer/dist/
+installer/gozik-installer-*
