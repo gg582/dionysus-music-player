@@ -49,11 +49,21 @@ func (mw *MainWindow) OpenProviderDialog() {
 		}
 	}
 
+	mw.providerDialog = dialog
+	defer func() { mw.providerDialog = nil }()
+
 	headerBar, _ := gtk.HeaderBarNew()
 	if headerBar != nil {
 		headerBar.SetShowCloseButton(true)
 		headerBar.SetTitle("Open from Music Provider")
 		dialog.SetTitlebar(headerBar)
+		if ctx, err := headerBar.GetStyleContext(); err == nil && ctx != nil {
+			if mw.isDarkTheme() {
+				ctx.AddClass(themeClassDark)
+			} else {
+				ctx.AddClass(themeClassLight)
+			}
+		}
 	}
 
 	if closeBtn, err := dialog.GetWidgetForResponse(gtk.RESPONSE_CLOSE); err == nil && closeBtn != nil {
@@ -470,6 +480,36 @@ func (mw *MainWindow) OpenProviderDialog() {
 	box.ShowAll()
 	dialog.ShowAll()
 	dialog.Run()
+}
+
+// applyProviderDialogTheme updates the provider dialog and its header bar to
+// match the current light/dark theme.
+func (mw *MainWindow) applyProviderDialogTheme() {
+	if mw.providerDialog == nil {
+		return
+	}
+	apply := func(ctx *gtk.StyleContext) {
+		if ctx == nil {
+			return
+		}
+		if mw.isDarkTheme() {
+			ctx.RemoveClass(themeClassLight)
+			ctx.AddClass(themeClassDark)
+		} else {
+			ctx.RemoveClass(themeClassDark)
+			ctx.AddClass(themeClassLight)
+		}
+	}
+	if ctx, err := mw.providerDialog.GetStyleContext(); err == nil {
+		apply(ctx)
+	}
+	if titlebar, err := mw.providerDialog.GetTitlebar(); err == nil && titlebar != nil {
+		if hb, ok := titlebar.(*gtk.HeaderBar); ok {
+			if ctx, err := hb.GetStyleContext(); err == nil {
+				apply(ctx)
+			}
+		}
+	}
 }
 
 // themeComboPopup tags the dropdown window of a GtkComboBox with the same

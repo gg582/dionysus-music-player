@@ -86,6 +86,7 @@ type MainWindow struct {
 	inThemeUpdate      bool
 	themeButton        *gtk.Button
 	fileDialog         *fileDialog
+	providerDialog     *gtk.Dialog
 	mprisServer        *mpris.Server
 	grpcServer         *grpcserver.Server
 	grpcEventPublisher grpcserver.EventPublisher
@@ -442,6 +443,9 @@ func (mw *MainWindow) applySystemTheme() {
 
 	if mw.fileDialog != nil {
 		mw.fileDialog.applyTheme()
+	}
+	if mw.providerDialog != nil {
+		mw.applyProviderDialogTheme()
 	}
 	mw.updateLyricTagColors()
 }

@@ -375,12 +375,13 @@ window.theme-light {
   background-color: #F0F2F5;
   background-image:
     url("stars-light.png"),
-    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.10), transparent),
-    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.06), transparent),
+    radial-gradient(farthest-side at 82% 6%,  rgba(74,184,196,0.10), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(74,184,196,0.06), transparent),
     radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.08));
 }
 
-window.theme-light label { color: #1A1D26; }
+window.theme-light label,
+dialog.theme-light label { color: #1A1D26; }
 
 /* ---------- player card ---------- */
 window.theme-light #SongPlayerWidget {
@@ -391,11 +392,11 @@ window.theme-light #SongPlayerWidget {
 
 /* ---------- album cover ---------- */
 window.theme-light #AlbumCover {
-  border: 1px solid rgba(95,211,224,0.25);
+  border: 1px solid rgba(74,184,196,0.25);
   background-color: #E8EBF0;
   background-image:
-    radial-gradient(farthest-side at 32% 24%, rgba(95,211,224,0.12), transparent),
-    radial-gradient(farthest-side at 72% 84%, rgba(95,211,224,0.06), transparent);
+    radial-gradient(farthest-side at 32% 24%, rgba(74,184,196,0.12), transparent),
+    radial-gradient(farthest-side at 72% 84%, rgba(74,184,196,0.06), transparent);
 }
 
 /* ---------- typography ---------- */
@@ -425,15 +426,15 @@ window.theme-light list row {
 }
 window.theme-light list row:hover    { background-color: rgba(0,0,0,0.04); }
 window.theme-light list row:selected {
-  background-color: rgba(95,211,224,0.10);
-  box-shadow: inset 0 0 0 1px rgba(95,211,224,0.30);
+  background-color: rgba(74,184,196,0.10);
+  box-shadow: inset 0 0 0 1px rgba(74,184,196,0.30);
   color: #1A1D26;
 }
 window.theme-light list row.playing {
-  background-color: rgba(95,211,224,0.14);
-  color: #008EA0;
+  background-color: rgba(74,184,196,0.14);
+  color: #007A8A;
 }
-window.theme-light list row:selected.playing { background-color: rgba(95,211,224,0.20); color: #008EA0; }
+window.theme-light list row:selected.playing { background-color: rgba(74,184,196,0.20); color: #007A8A; }
 
 /* per-row remove button */
 window.theme-light list row button {
@@ -449,12 +450,12 @@ window.theme-light button {
   border: 1px solid transparent;
 }
 window.theme-light button:hover  { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
-window.theme-light button:active { background-color: rgba(95,211,224,0.16); color: #008EA0; }
-window.theme-light button:checked { background-color: rgba(95,211,224,0.16); color: #008EA0; }
+window.theme-light button:active { background-color: rgba(74,184,196,0.16); color: #007A8A; }
+window.theme-light button:checked { background-color: rgba(74,184,196,0.16); color: #007A8A; }
 window.theme-light button.engaged {
-  background-color: rgba(95,211,224,0.16);
-  color: #008EA0;
-  border-color: rgba(95,211,224,0.30);
+  background-color: rgba(74,184,196,0.16);
+  color: #007A8A;
+  border-color: rgba(74,184,196,0.30);
 }
 
 /* ghost surface buttons */
@@ -467,7 +468,7 @@ window.theme-light #BtnOpenCD {
 window.theme-light #BtnOpen:hover,
 window.theme-light #BtnOpenCD:hover {
   background-color: rgba(0,0,0,0.07);
-  border-color: rgba(95,211,224,0.35);
+  border-color: rgba(74,184,196,0.35);
 }
 window.theme-light #btn-dot { color: #8A93A6; }
 
@@ -476,12 +477,12 @@ window.theme-light scale trough {
   background-color: rgba(0,0,0,0.08);
 }
 window.theme-light scale highlight {
-  background-color: #5FD3E0;
+  background-color: #4AB8C4;
 }
 window.theme-light scale slider {
   background-color: #F0F2F5;
-  border: 2px solid #5FD3E0;
-  box-shadow: 0 0 8px rgba(95,211,224,0.35);
+  border: 2px solid #4AB8C4;
+  box-shadow: 0 0 8px rgba(74,184,196,0.35);
 }
 
 /* volume slider muted state */
@@ -504,7 +505,7 @@ window.theme-light scrollbar button {
   color: #5A6270;
 }
 window.theme-light scrollbar button:hover  { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
-window.theme-light scrollbar button:active { background-color: rgba(95,211,224,0.16); color: #008EA0; }
+window.theme-light scrollbar button:active { background-color: rgba(74,184,196,0.16); color: #007A8A; }
 window.theme-light scrollbar button:disabled { color: #8A93A6; }
 
 /* ---------- lyrics panel ---------- */
@@ -516,8 +517,8 @@ window.theme-light textview text {
   color: #5A6270;
 }
 window.theme-light textview text selection {
-  background-color: rgba(95,211,224,0.22);
-  color: #008EA0;
+  background-color: rgba(74,184,196,0.22);
+  color: #007A8A;
 }
 
 /* ---------- volume button ---------- */
@@ -540,16 +541,19 @@ window.theme-light separator {
   background-color: rgba(0,0,0,0.08);
 }
 window.theme-light #fd-path { color: #5A6270; }
-window.theme-light entry {
+window.theme-light entry,
+dialog.theme-light entry {
   background-color: rgba(0,0,0,0.03);
   border: 1px solid rgba(0,0,0,0.10);
   color: #5A6270;
 }
-window.theme-light entry:focus { border-color: rgba(95,211,224,0.35); }
-window.theme-light entry image { color: #8A93A6; }
+window.theme-light entry:focus,
+dialog.theme-light entry:focus { border-color: rgba(74,184,196,0.35); }
+window.theme-light entry image,
+dialog.theme-light entry image { color: #8A93A6; }
 window.theme-light #fd-place-icon,
 window.theme-light #fd-folder-icon { color: #5A6270; }
-window.theme-light #fd-audio-icon { color: #5FD3E0; }
+window.theme-light #fd-audio-icon { color: #4AB8C4; }
 window.theme-light #fd-col { color: #8A93A6; }
 window.theme-light #fd-name { color: #1A1D26; }
 window.theme-light #fd-meta { color: #8A93A6; }
@@ -569,24 +573,31 @@ window.theme-light #fd-crumb.current label { color: #1A1D26; }
 window.theme-light #fd-crumb-sep { color: #8A93A6; }
 
 /* footer buttons */
-window.theme-light button.btn-ghost {
+window.theme-light button.btn-ghost,
+dialog.theme-light button.btn-ghost {
   background-color: rgba(0,0,0,0.04);
   border: 1px solid rgba(0,0,0,0.10);
+  color: #1A1D26;
 }
-window.theme-light button.btn-ghost label { color: #1A1D26; }
-window.theme-light button.btn-ghost:hover {
+window.theme-light button.btn-ghost label,
+dialog.theme-light button.btn-ghost label { color: #1A1D26; }
+window.theme-light button.btn-ghost:hover,
+dialog.theme-light button.btn-ghost:hover {
   background-color: rgba(0,0,0,0.07);
-  border-color: rgba(95,211,224,0.35);
+  border-color: rgba(74,184,196,0.35);
 }
-window.theme-light button.btn-primary {
-  background-color: rgba(95,211,224,0.18);
-  border: 1px solid #5FD3E0;
+window.theme-light button.btn-primary,
+dialog.theme-light button.btn-primary {
+  background-color: rgba(74,184,196,0.18);
+  border: 1px solid #4AB8C4;
 }
-window.theme-light button.btn-primary label { color: #008EA0; }
-window.theme-light button.btn-primary:hover { background-color: rgba(95,211,224,0.28); }
+window.theme-light button.btn-primary label,
+dialog.theme-light button.btn-primary label { color: #007A8A; }
+window.theme-light button.btn-primary:hover,
+dialog.theme-light button.btn-primary:hover { background-color: rgba(74,184,196,0.28); }
 
 /* playing row cyan title + gold pulse */
-window.theme-light list row.playing #row-title { color: #008EA0; }
+window.theme-light list row.playing #row-title { color: #007A8A; }
 window.theme-light list row.playing #row-lead { color: #C9A840; }
 
 /* ---------- custom headerbar for CSD ---------- */
@@ -606,15 +617,30 @@ headerbar .subtitle {
   font-size: 11px;
 }
 
-window.theme-light headerbar {
+window.theme-light headerbar,
+dialog.theme-light headerbar {
   background-color: #E6EAF2;
   border-bottom: 1px solid rgba(0,0,0,0.1);
 }
-window.theme-light headerbar .title {
+window.theme-light headerbar .title,
+dialog.theme-light headerbar .title {
   color: #1A1D26;
 }
-window.theme-light headerbar .subtitle {
+window.theme-light headerbar .subtitle,
+dialog.theme-light headerbar .subtitle {
   color: #5A6270;
+}
+
+/* explicit dark headerbar for dialogs so toggling back from light works */
+dialog.theme-dark headerbar {
+  background-color: @abyss0;
+  border-bottom: 1px solid rgba(95,211,224,0.12);
+}
+dialog.theme-dark headerbar .title {
+  color: @text1;
+}
+dialog.theme-dark headerbar .subtitle {
+  color: @text2;
 }
 
 /* ---------- provider dialog (reuses main window bg) ---------- */
@@ -635,8 +661,8 @@ dialog.theme-light {
   background-color: #F0F2F5;
   background-image:
     url("stars-light.png"),
-    radial-gradient(farthest-side at 82% 6%,  rgba(95,211,224,0.10), transparent),
-    radial-gradient(farthest-side at 16% 102%, rgba(95,211,224,0.06), transparent),
+    radial-gradient(farthest-side at 82% 6%,  rgba(74,184,196,0.10), transparent),
+    radial-gradient(farthest-side at 16% 102%, rgba(74,184,196,0.06), transparent),
     radial-gradient(farthest-corner at 50% 34%, transparent 58%, rgba(0,0,0,0.08));
 }
 
@@ -657,5 +683,44 @@ window.theme-light #ProviderScroll,
 dialog.theme-light #ProviderScroll {
   background-color: rgba(0,0,0,0.02);
   border: 1px solid rgba(0,0,0,0.08);
+}
+
+/* ---------- dialog-specific light theme fixes ----------
+   Dialogs are separate GtkWindows so some window.theme-light rules
+   don't reach their children. Provide explicit dialog.theme-light
+   overrides so hovering doesn't fall back to the default GTK theme
+   (which can paint a white background and hide light text). */
+dialog.theme-light button {
+  background-color: transparent;
+  color: #5A6270;
+  border: 1px solid transparent;
+}
+dialog.theme-light button:hover  { background-color: rgba(0,0,0,0.05); color: #1A1D26; }
+dialog.theme-light button:active { background-color: rgba(74,184,196,0.16); color: #007A8A; }
+dialog.theme-light button:checked { background-color: rgba(74,184,196,0.16); color: #007A8A; }
+dialog.theme-light button image { color: inherit; -gtk-icon-shadow: none; }
+
+dialog.theme-light list row {
+  color: #1A1D26;
+  background-color: transparent;
+}
+dialog.theme-light list row:hover    { background-color: rgba(0,0,0,0.04); }
+dialog.theme-light list row:selected {
+  background-color: rgba(74,184,196,0.10);
+  box-shadow: inset 0 0 0 1px rgba(74,184,196,0.30);
+  color: #1A1D26;
+}
+dialog.theme-light list row.playing {
+  background-color: rgba(74,184,196,0.14);
+  color: #007A8A;
+}
+
+dialog.theme-light menuitem {
+  color: #1A1D26;
+  background-color: transparent;
+}
+dialog.theme-light menuitem:hover {
+  background-color: rgba(0,0,0,0.08);
+  color: #1A1D26;
 }
 
