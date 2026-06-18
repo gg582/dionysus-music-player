@@ -630,7 +630,8 @@ dialog {
   border: none;
   box-shadow: none;
 }
-window.theme-light dialog {
+window.theme-light dialog,
+dialog.theme-light {
   background-color: #F0F2F5;
   background-image:
     url("stars-light.png"),
@@ -652,7 +653,8 @@ dialog .dialog-action-area {
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 10px;
 }
-window.theme-light #ProviderScroll {
+window.theme-light #ProviderScroll,
+dialog.theme-light #ProviderScroll {
   background-color: rgba(0,0,0,0.02);
   border: 1px solid rgba(0,0,0,0.08);
 }
