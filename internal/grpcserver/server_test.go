@@ -106,7 +106,7 @@ func (f *fakeController) ResolveProviderStream(providerID, trackID string) (stri
 func (f *fakeController) GetProviderPlaylistDetails(providerID, playlistID string, limit int32) (*musicv1.Playlist, []*musicv1.Track, error) {
 	return &musicv1.Playlist{Id: playlistID}, []*musicv1.Track{{Id: "t1"}}, nil
 }
-func (f *fakeController) AddProviderTrack(providerID, trackID string) {}
+func (f *fakeController) AddProviderTrack(providerID, trackID string) error { return nil }
 
 func TestServerPlaybackControls(t *testing.T) {
 	ctrl := &fakeController{volume: 0.8}

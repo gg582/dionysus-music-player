@@ -66,7 +66,7 @@ type Controller interface {
 	GetProviderTrackDetails(providerID, trackID string) (*musicv1.Track, error)
 	ResolveProviderStream(providerID, trackID string) (string, map[string]string, error)
 	GetProviderPlaylistDetails(providerID, playlistID string, limit int32) (*musicv1.Playlist, []*musicv1.Track, error)
-	AddProviderTrack(providerID, trackID string)
+	AddProviderTrack(providerID, trackID string) error
 }
 
 // CDDevice describes a single CD-ROM device.
@@ -442,7 +442,9 @@ func (s *Server) GetProviderPlaylistDetails(ctx context.Context, req *playerv1.G
 }
 
 func (s *Server) AddProviderTrack(ctx context.Context, req *playerv1.AddProviderTrackRequest) (*playerv1.Empty, error) {
-	s.ctrl.AddProviderTrack(req.ProviderId, req.TrackId)
+	if err := s.ctrl.AddProviderTrack(req.ProviderId, req.TrackId); err != nil {
+		return nil, err
+	}
 	return &playerv1.Empty{}, nil
 }
 

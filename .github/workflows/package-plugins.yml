@@ -32,7 +32,7 @@ env:
   PLUGIN_DIR: 'gozik-yt-music'
   BINARY_NAME: 'gozik-yt-music-server'
   DAEMON_DESCRIPTION: 'gozik YouTube Music gRPC plugin server'
-  DAEMON_PORT: '50051'
+  DAEMON_PORT: '50052'
 
 jobs:
   build-windows:
@@ -172,7 +172,7 @@ jobs:
           #define AppPublisher "gosuda"
           #define AppId       "{{8A3F7C2E-1B4D-4E9A-AF12-6C9B7D3F8E21}"
           #define ServiceName "GozikYTMusicPlugin"
-          #define ServiceDesc "gozik YouTube Music gRPC daemon (port 50051)"
+          #define ServiceDesc "gozik YouTube Music gRPC daemon (port 50052)"
           #define InstallDir  "{commonpf}\gozik\plugins\ytmusic"
           #define BinaryName  "${{ env.BINARY_NAME }}.exe"
 
@@ -203,7 +203,7 @@ jobs:
           [Run]
           Filename: "{app}\nssm.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden waituntilterminated; StatusMsg: "Stopping existing service (if any)..."; Check: ServiceExists
           Filename: "{app}\nssm.exe"; Parameters: "remove {#ServiceName} confirm"; Flags: runhidden waituntilterminated; StatusMsg: "Removing old service registration..."; Check: ServiceExists
-          Filename: "{app}\nssm.exe"; Parameters: "install {#ServiceName} ""{app}\{#BinaryName}"" ""--port 50051"""; Flags: runhidden waituntilterminated; StatusMsg: "Registering gRPC daemon as a Windows service..."
+          Filename: "{app}\nssm.exe"; Parameters: "install {#ServiceName} ""{app}\{#BinaryName}"" ""--port 50052"""; Flags: runhidden waituntilterminated; StatusMsg: "Registering gRPC daemon as a Windows service..."
           Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} DisplayName ""{#AppName}"""; Flags: runhidden waituntilterminated
           Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Description ""{#ServiceDesc}"""; Flags: runhidden waituntilterminated
           Filename: "{app}\nssm.exe"; Parameters: "set {#ServiceName} Start SERVICE_AUTO_START"; Flags: runhidden waituntilterminated; StatusMsg: "Configuring service for automatic startup..."

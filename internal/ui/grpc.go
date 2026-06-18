@@ -392,39 +392,37 @@ func (c *grpcController) GetProviderPlaylistDetails(providerID, playlistID strin
 	return c.mw.providerMgr.GetPlaylistDetails(ctx, providerID, playlistID, limit)
 }
 
-func (c *grpcController) AddProviderTrack(providerID, trackID string) {
+func (c *grpcController) AddProviderTrack(providerID, trackID string) error {
 	if c.mw.providerMgr == nil {
-		return
+		return fmt.Errorf("provider manager not initialized")
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		track, err := c.mw.providerMgr.GetTrackMetadata(ctx, providerID, trackID)
-		cancel()
-		if err != nil {
-			log.Printf("gRPC AddProviderTrack failed: %v", err)
-			return
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	track, err := c.mw.providerMgr.GetTrackMetadata(ctx, providerID, trackID)
+	if err != nil {
+		return fmt.Errorf("fetch track metadata for %s/%s: %w", providerID, trackID, err)
+	}
+	glib.IdleAdd(func() bool {
+		song := models.Song{
+			Name:            track.Title,
+			Artist:          providerArtists(track.Artists),
+			Title:           track.Title,
+			Album:           albumTitle(track.Album),
+			Duration:        int(track.DurationMs / 1000),
+			ProviderID:      providerID,
+			ProviderName:    providerName(c.mw.providerMgr, providerID),
+			ProviderTrackID: track.Id,
 		}
-		glib.IdleAdd(func() bool {
-			song := models.Song{
-				Name:            track.Title,
-				Artist:          providerArtists(track.Artists),
-				Title:           track.Title,
-				Album:           albumTitle(track.Album),
-				Duration:        int(track.DurationMs / 1000),
-				ProviderID:      providerID,
-				ProviderName:    providerName(c.mw.providerMgr, providerID),
-				ProviderTrackID: track.Id,
-			}
-			if len(track.Images) > 0 {
-				song.CoverArtURL = track.Images[0].Url
-			}
-			c.mw.songs = append(c.mw.songs, song)
-			c.mw.appendSongToList(song)
-			c.mw.updateQueueHeader()
-			c.mw.publishQueueChanged()
-			return false
-		})
-	}()
+		if len(track.Images) > 0 {
+			song.CoverArtURL = track.Images[0].Url
+		}
+		c.mw.songs = append(c.mw.songs, song)
+		c.mw.appendSongToList(song)
+		c.mw.updateQueueHeader()
+		c.mw.publishQueueChanged()
+		return false
+	})
+	return nil
 }
 
 func providerArtists(artists []*musicv1.Artist) string {
