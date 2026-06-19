@@ -37,11 +37,7 @@ func (c *grpcController) Previous() { glib.IdleAdd(func() bool { c.mw.onPrev(); 
 
 func (c *grpcController) PlayIndex(idx int) {
 	glib.IdleAdd(func() bool {
-		if c.mw.listBox == nil || idx < 0 || idx >= len(c.mw.songs) {
-			return false
-		}
-		c.mw.listBox.SelectRow(c.mw.listBox.GetRowAtIndex(idx))
-		c.mw.onPlay()
+		c.mw.playAtIndex(idx)
 		return false
 	})
 }
@@ -402,6 +398,7 @@ func (c *grpcController) AddProviderTrack(providerID, trackID string) error {
 	if err != nil {
 		return fmt.Errorf("fetch track metadata for %s/%s: %w", providerID, trackID, err)
 	}
+	done := make(chan struct{})
 	glib.IdleAdd(func() bool {
 		song := models.Song{
 			Name:            track.Title,
@@ -420,9 +417,15 @@ func (c *grpcController) AddProviderTrack(providerID, trackID string) error {
 		c.mw.appendSongToList(song)
 		c.mw.updateQueueHeader()
 		c.mw.publishQueueChanged()
+		close(done)
 		return false
 	})
-	return nil
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func providerArtists(artists []*musicv1.Artist) string {

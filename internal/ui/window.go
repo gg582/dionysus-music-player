@@ -63,6 +63,7 @@ type MainWindow struct {
 	rows               []*songRow
 	selectedIdx        int
 	playingIdx         int
+	playGeneration     uint64
 	transitioning      bool
 	ticker             *time.Ticker
 	tickerDone         chan struct{}
@@ -158,11 +159,6 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 			mw.listBox = lb
 			mw.listBox.Connect("row-selected", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
 				if row != nil {
-					if row.GetIndex() == mw.selectedIdx {
-						mw.selectedIdx = -1
-						lb.SelectRow(nil)
-						return
-					}
 					mw.selectedIdx = row.GetIndex()
 				} else {
 					mw.selectedIdx = -1
@@ -297,8 +293,7 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	if mw.listBox != nil {
 		mw.listBox.Connect("row-activated", func(lb *gtk.ListBox, row *gtk.ListBoxRow) {
 			if row != nil {
-				mw.selectedIdx = row.GetIndex()
-				mw.onPlay()
+				mw.playAtIndex(row.GetIndex())
 			}
 		})
 	}
@@ -1209,21 +1204,42 @@ func (mw *MainWindow) refreshRowDisplay(i int) {
 	}
 }
 
+// onPlay starts playback using the currently selected row, falling back to the
+// first song when nothing is selected.
 func (mw *MainWindow) onPlay() {
+	mw.playAtIndex(-1)
+}
+
+// playAtIndex starts playback of the song at explicitIdx. If explicitIdx is
+// negative or out of range, the currently selected row is used, falling back to
+// the first song. Explicit user/RPC selections always override any pending
+// async cursor changes.
+func (mw *MainWindow) playAtIndex(explicitIdx int) {
 	mw.stopTicker()
 	if mw.listBox == nil {
 		return
 	}
-	row := mw.listBox.GetSelectedRow()
-	if row == nil {
-		if len(mw.songs) > 0 {
-			mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(0))
-			row = mw.listBox.GetRowAtIndex(0)
-		} else {
-			return
+
+	mw.playGeneration++
+	gen := mw.playGeneration
+
+	var idx int
+	if explicitIdx >= 0 && explicitIdx < len(mw.songs) {
+		idx = explicitIdx
+		mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(idx))
+		mw.selectedIdx = idx
+	} else {
+		row := mw.listBox.GetSelectedRow()
+		if row == nil {
+			if len(mw.songs) > 0 {
+				mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(0))
+				row = mw.listBox.GetRowAtIndex(0)
+			} else {
+				return
+			}
 		}
+		idx = row.GetIndex()
 	}
-	idx := row.GetIndex()
 	if idx < 0 || idx >= len(mw.songs) {
 		return
 	}
@@ -1232,7 +1248,7 @@ func (mw *MainWindow) onPlay() {
 
 	// Provider tracks need stream resolution before playback.
 	if song.ProviderTrackID != "" && song.ProviderID != "" {
-		go mw.playProviderTrack(idx)
+		go mw.playProviderTrack(idx, gen)
 		return
 	}
 
@@ -1287,7 +1303,10 @@ func (mw *MainWindow) onPlay() {
 }
 
 // playProviderTrack resolves the stream URL for a provider track and then plays it.
-func (mw *MainWindow) playProviderTrack(idx int) {
+// gen is the play-generation counter at the time the request was issued; stale
+// results are dropped if the user or an explicit RPC request moved the cursor
+// in the meantime.
+func (mw *MainWindow) playProviderTrack(idx int, gen uint64) {
 	if idx < 0 || idx >= len(mw.songs) {
 		mw.transitioning = false
 		return
@@ -1311,6 +1330,12 @@ func (mw *MainWindow) playProviderTrack(idx int) {
 
 	glib.IdleAdd(func() bool {
 		if mw.closing.Load() {
+			mw.transitioning = false
+			return false
+		}
+		if mw.playGeneration != gen {
+			// The user or an explicit RPC request changed the cursor while the
+			// stream was resolving; drop this stale result.
 			mw.transitioning = false
 			return false
 		}
