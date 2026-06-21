@@ -33,7 +33,7 @@ func installHangulComposition(entry *gtk.Entry) {
 		// Keep the insertion point where the user is typing.  We re-compose
 		// the runes before the original cursor and place the cursor after
 		// that composed prefix.
-		pos, _ := entry.GetPosition()
+		pos := entry.GetPosition()
 		newPos := -1
 		if pos >= 0 {
 			runes := []rune(text)
@@ -72,7 +72,7 @@ func installHangulCompositionSearch(entry *gtk.SearchEntry) {
 			return
 		}
 
-		pos, _ := entry.GetPosition()
+		pos := entry.GetPosition()
 		newPos := -1
 		if pos >= 0 {
 			runes := []rune(text)
