@@ -1201,6 +1201,7 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 	// Probe duration in the background so the queue total + row time fill in.
 	if !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
 		if mw.prescanBridge != nil {
+			log.Printf("[Waveform] Triggering import scan for: %s", song.Location)
 			mw.prescanBridge.Submit(song.Location)
 		}
 		loc := song.Location
@@ -1377,6 +1378,12 @@ func (mw *MainWindow) playAtIndex(explicitIdx int) {
 	mw.playingIdx = idx
 	if mw.waveformOverlay != nil {
 		mw.waveformOverlay.SetWaveform(song.Waveform)
+		if song.Waveform == nil && !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
+			if mw.prescanBridge != nil {
+				log.Printf("[Waveform] Triggering play scan for: %s", song.Location)
+				mw.prescanBridge.Submit(song.Location)
+			}
+		}
 	}
 	// Re-apply current volume so ReplayGain is refreshed for the new track.
 	if mw.volumeScale != nil {
@@ -2327,9 +2334,16 @@ func shiftIdx(idx, src, dest int) int {
 }
 
 func (mw *MainWindow) handleScanResult(res ffmpeg.ScanResult) {
-	if res.Err != nil || res.Waveform == nil {
+	if res.Err != nil {
+		log.Printf("[Waveform] Scan failed for %s: %v", res.Path, res.Err)
 		return
 	}
+	if res.Waveform == nil {
+		log.Printf("[Waveform] Scan returned nil waveform for %s", res.Path)
+		return
+	}
+	log.Printf("[Waveform] Scan succeeded for %s with %d data points", res.Path, len(res.Waveform.Data))
+	matched := false
 	for i, s := range mw.songs {
 		if s.Location == res.Path {
 			mw.songs[i].Waveform = res.Waveform
@@ -2338,8 +2352,12 @@ func (mw *MainWindow) handleScanResult(res ffmpeg.ScanResult) {
 					mw.waveformOverlay.SetWaveform(res.Waveform)
 				}
 			}
+			matched = true
 			break
 		}
+	}
+	if !matched {
+		log.Printf("[Waveform] Warning: Scanned path %s does not match any song in the active queue!", res.Path)
 	}
 }
 
