@@ -20,6 +20,13 @@ var Prefix = ""
 func AssetPath(rel string) string {
 	candidates := []string{}
 
+	if env := os.Getenv("GOZIK_ASSETS"); env != "" {
+		candidates = append(candidates, filepath.Join(env, rel))
+	}
+
+	// Development fallback relative to working directory (prioritized for local runs).
+	candidates = append(candidates, filepath.Join(".", "assets", rel))
+
 	if Prefix != "" {
 		candidates = append(candidates, filepath.Join(Prefix, "share", "gozik", rel))
 	}
@@ -35,13 +42,6 @@ func AssetPath(rel string) string {
 			}
 		}
 	}
-
-	if env := os.Getenv("GOZIK_ASSETS"); env != "" {
-		candidates = append(candidates, filepath.Join(env, rel))
-	}
-
-	// Development fallback relative to working directory.
-	candidates = append(candidates, filepath.Join(".", "assets", rel))
 
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
