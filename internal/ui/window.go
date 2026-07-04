@@ -234,6 +234,9 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 				if mw.settingProgress {
 					return
 				}
+				if mw.waveformOverlay != nil {
+					mw.waveformOverlay.SetProgress(mw.progressBar.GetValue() / 10000.0)
+				}
 				if mw.seeking {
 					return
 				}
@@ -1662,11 +1665,16 @@ func (mw *MainWindow) startTicker() {
 							mw.totalTimeLabel.SetText(formatDuration(int(length.Seconds())))
 						}
 					}
-					if mw.progressBar != nil && length > 0 && !mw.seeking {
-						pct := float64(pos) / float64(length) * 10000.0
-						mw.settingProgress = true
-						mw.progressBar.SetValue(pct)
-						mw.settingProgress = false
+					if length > 0 {
+						progress := float64(pos) / float64(length)
+						if mw.progressBar != nil && !mw.seeking {
+							mw.settingProgress = true
+							mw.progressBar.SetValue(progress * 10000.0)
+							mw.settingProgress = false
+						}
+						if mw.waveformOverlay != nil {
+							mw.waveformOverlay.SetProgress(progress)
+						}
 					}
 
 					// Enforce auto-advance immediately when player finishes (IsEOF) with transitioning lock.

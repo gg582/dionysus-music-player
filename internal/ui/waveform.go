@@ -16,6 +16,7 @@ type WaveformOverlay struct {
 	colorR   float64
 	colorG   float64
 	colorB   float64
+	progress float64 // Playback progress (0.0 to 1.0)
 }
 
 // NewWaveformOverlay creates a new waveform widget.
@@ -57,11 +58,20 @@ func (w *WaveformOverlay) SetColor(r, g, b float64) {
 	w.drawing.QueueDraw()
 }
 
+// SetProgress updates the playback progress and queues a redraw.
+func (w *WaveformOverlay) SetProgress(progress float64) {
+	w.mu.Lock()
+	w.progress = progress
+	w.mu.Unlock()
+	w.drawing.QueueDraw()
+}
+
 // onDraw renders 200 vertical amplitude bars centered vertically.
 func (w *WaveformOverlay) onDraw(da *gtk.DrawingArea, cr *cairo.Context) bool {
 	w.mu.RLock()
 	wf := w.waveform
 	r, g, b := w.colorR, w.colorG, w.colorB
+	progress := w.progress
 	w.mu.RUnlock()
 
 	width := float64(da.GetAllocatedWidth())
@@ -89,9 +99,16 @@ func (w *WaveformOverlay) onDraw(da *gtk.DrawingArea, cr *cairo.Context) bool {
 		y := (height - barHeight) / 2
 
 		cr.Rectangle(x, y, barWidth-gap, barHeight)
+
+		barProgress := float64(i) / 200.0
+		if barProgress <= progress {
+			cr.SetSourceRGB(r, g, b)
+		} else {
+			// Dimmed version of the active theme color
+			cr.SetSourceRGB(r*0.25+0.1, g*0.25+0.1, b*0.25+0.1)
+		}
+		cr.Fill()
 	}
 
-	cr.SetSourceRGB(r, g, b)
-	cr.Fill()
 	return false
 }
