@@ -290,7 +290,7 @@ jobs:
         run: |
           cd installer
           go mod tidy
-          ./scripts/build.sh dist
+          ./scripts/build.sh dist "${{ github.ref_name }}"
 
       - uses: actions/upload-artifact@v4
         with:

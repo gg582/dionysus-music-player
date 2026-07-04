@@ -27,6 +27,8 @@ var webFS embed.FS
 var (
 	progressMu sync.RWMutex
 	progress   = InstallProgress{Step: "Ready", Percent: 0, Log: ""}
+
+	defaultVersion = "latest"
 )
 
 type InstallProgress struct {
@@ -47,7 +49,7 @@ type InstallRequest struct {
 
 func main() {
 	var (
-		version        = flag.String("version", "latest", "Version/tag to install (e.g. latest or v1.2.3)")
+		version        = flag.String("version", normalizedDefaultVersion(), "Version/tag to install (e.g. latest or v1.2.3)")
 		dir            = flag.String("dir", "", "Installation directory (default: platform-specific user directory)")
 		addToPATH      = flag.Bool("add-to-path", false, "Add install directory to user PATH (Windows only)")
 		createShortcut = flag.Bool("create-shortcut", false, "Create Start Menu/Desktop shortcuts (Windows only)")
@@ -164,11 +166,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 func handleInfo(w http.ResponseWriter, r *http.Request) {
 	t := platforms.CurrentTarget()
 	info := map[string]any{
-		"os":           t.OS,
-		"arch":         t.Arch,
-		"defaultDir":   defaultInstallDir(),
-		"isWindows":    runtime.GOOS == "windows",
-		"payloadAsset": t.PayloadAssetName(),
+		"os":             t.OS,
+		"arch":           t.Arch,
+		"defaultDir":     defaultInstallDir(),
+		"defaultVersion": normalizedDefaultVersion(),
+		"isWindows":      runtime.GOOS == "windows",
+		"payloadAsset":   t.PayloadAssetName(),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(info)
@@ -289,7 +292,7 @@ func validateRequest(req *InstallRequest) error {
 		return fmt.Errorf("installation directory must be an absolute path")
 	}
 	if req.Version == "" {
-		req.Version = "latest"
+		req.Version = normalizedDefaultVersion()
 	}
 	return nil
 }
@@ -307,6 +310,18 @@ func expandTilde(path string) string {
 }
 
 func normalizeVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || strings.EqualFold(v, "latest") {
+		return normalizedDefaultVersion()
+	}
+	return normalizeVersionTag(v)
+}
+
+func normalizedDefaultVersion() string {
+	return normalizeVersionTag(defaultVersion)
+}
+
+func normalizeVersionTag(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" || strings.EqualFold(v, "latest") {
 		return "latest"

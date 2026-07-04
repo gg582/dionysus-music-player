@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	RepoOwner = "gg582"
+	RepoOwner = "gosuda"
 	RepoName  = "gozik"
 	AssetBase = "gozik-payload"
 )
@@ -91,10 +91,10 @@ func (t Target) InstallerAssetName() string {
 // ReleaseURL returns the download URL for a payload asset.
 func (t Target) ReleaseURL(version string) string {
 	tag := version
-	if tag == "" || tag == "latest" {
-		return fmt.Sprintf("https://github.com/%s/%s/releases/download/latest/%s", RepoOwner, RepoName, t.PayloadAssetName())
+	if tag == "" {
+		tag = "latest"
 	}
-	if !strings.HasPrefix(tag, "v") {
+	if tag != "latest" && !strings.HasPrefix(tag, "v") {
 		tag = "v" + tag
 	}
 	return fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", RepoOwner, RepoName, tag, t.PayloadAssetName())

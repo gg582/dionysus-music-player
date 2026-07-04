@@ -27,6 +27,7 @@ async function init() {
   const res = await fetch('/api/info');
   info = await res.json();
   els.subtitle.textContent = `Platform: ${info.os}/${info.arch}`;
+  els.version.value = info.defaultVersion || 'latest';
   els.installDir.value = info.defaultDir;
 
   if (info.isWindows) {
@@ -89,7 +90,7 @@ document.getElementById('btn-install').addEventListener('click', async () => {
   startProgressStream();
 
   const body = {
-    version: els.version.value || 'latest',
+    version: els.version.value || info.defaultVersion || 'latest',
     installDir: els.installDir.value.trim(),
     addToPATH: els.addToPATH.checked,
     createShortcut: els.createShortcut.checked,

@@ -2,7 +2,6 @@ package platforms
 
 import (
 	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -74,16 +73,16 @@ func TestInstallerAssetName(t *testing.T) {
 func TestReleaseURLNormalizesVersion(t *testing.T) {
 	tgt := Target{OS: "linux", Arch: "amd64"}
 	cases := []struct {
-		version, wantSub string
+		version, want string
 	}{
-		{"latest", "/releases/download/latest/"},
-		{"1.2.3", "/releases/download/v1.2.3/"},
-		{"v1.2.3", "/releases/download/v1.2.3/"},
+		{"latest", "https://github.com/gosuda/gozik/releases/download/latest/gozik-payload-linux-amd64.tar.gz"},
+		{"1.2.3", "https://github.com/gosuda/gozik/releases/download/v1.2.3/gozik-payload-linux-amd64.tar.gz"},
+		{"v1.2.3", "https://github.com/gosuda/gozik/releases/download/v1.2.3/gozik-payload-linux-amd64.tar.gz"},
 	}
 	for _, c := range cases {
 		got := tgt.ReleaseURL(c.version)
-		if !strings.Contains(got, c.wantSub) {
-			t.Errorf("ReleaseURL(%q) = %q, want substring %q", c.version, got, c.wantSub)
+		if got != c.want {
+			t.Errorf("ReleaseURL(%q) = %q, want %q", c.version, got, c.want)
 		}
 	}
 }

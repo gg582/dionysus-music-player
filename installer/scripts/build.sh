@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 # Cross-compile gozik installer binaries for all supported platforms.
-# Usage: ./installer/scripts/build.sh [output-dir]
+# Usage: ./installer/scripts/build.sh [output-dir] [default-version]
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 INSTALLER_DIR="${PROJECT_ROOT}/installer"
 OUTPUT_DIR="${1:-${INSTALLER_DIR}/dist}"
+DEFAULT_VERSION="${2:-${INSTALLER_DEFAULT_VERSION:-latest}}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -30,7 +31,7 @@ for spec in "${TARGETS[@]}"; do
   output="gozik-installer-${name}-${goarch}${suffix}"
   echo "Building $output ..."
   env GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
-    go build -ldflags="-s -w" -o "${OUTPUT_DIR}/${output}" .
+    go build -ldflags="-s -w -X main.defaultVersion=${DEFAULT_VERSION}" -o "${OUTPUT_DIR}/${output}" .
 done
 
 echo ""
