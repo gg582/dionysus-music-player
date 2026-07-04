@@ -14,21 +14,35 @@ import (
 
 // Prescan spawns a background analysis of path using FFmpeg subprocess.
 // It returns chapter metadata (nil) and a 200-point RMS waveform.
-func Prescan(path string) (*models.Waveform, []models.Chapter, error) {
-	if err := pcm.ValidateRawPCMSize(path); err != nil {
-		return nil, nil, err
+func Prescan(path string, headers map[string]string) (*models.Waveform, []models.Chapter, error) {
+	if !IsStreamURL(path) {
+		if err := pcm.ValidateRawPCMSize(path); err != nil {
+			return nil, nil, err
+		}
 	}
 
-	// Use ffmpeg process to decode to 8kHz mono s16le PCM
-	cmd := exec.Command("ffmpeg",
-		"-y",
+	args := []string{
+		"-hide_banner",
 		"-loglevel", "error",
+	}
+	for k, v := range headers {
+		args = append(args, "-headers", fmt.Sprintf("%s: %s\r\n", k, v))
+	}
+	if IsStreamURL(path) {
+		args = append(args,
+			"-reconnect", "1",
+			"-reconnect_streamed", "1",
+		)
+	}
+	args = append(args,
 		"-i", path,
 		"-f", "s16le",
 		"-ac", "1",
 		"-ar", "8000",
 		"-",
 	)
+
+	cmd := exec.Command("ffmpeg", args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -126,9 +140,8 @@ func NewScanPool(maxWorkers, outBuf int) *ScanPool {
 	}
 }
 
-// Submit attempts to take ownership of path and dispatch a worker.
-// It returns false if the path is already owned or the pool is closed.
-func (p *ScanPool) Submit(path string) bool {
+// SubmitSong submits a song for scanning with headers.
+func (p *ScanPool) SubmitSong(path string, headers map[string]string) bool {
 	p.mu.Lock()
 	select {
 	case <-p.done:
@@ -152,12 +165,18 @@ func (p *ScanPool) Submit(path string) bool {
 		return false
 	}
 
-	go p.work(path)
+	go p.work(path, headers)
 	return true
 }
 
+// Submit attempts to take ownership of path and dispatch a worker.
+// It returns false if the path is already owned or the pool is closed.
+func (p *ScanPool) Submit(path string) bool {
+	return p.SubmitSong(path, nil)
+}
+
 // work owns exactly one goroutine lifecycle: scan, send, release.
-func (p *ScanPool) work(path string) {
+func (p *ScanPool) work(path string, headers map[string]string) {
 	defer func() {
 		<-p.limit // release slot
 		p.mu.Lock()
@@ -165,7 +184,7 @@ func (p *ScanPool) work(path string) {
 		p.mu.Unlock()
 	}()
 
-	wf, ch, err := Prescan(path)
+	wf, ch, err := Prescan(path, headers)
 
 	select {
 	case <-p.done:

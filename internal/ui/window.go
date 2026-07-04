@@ -1449,6 +1449,12 @@ func (mw *MainWindow) playProviderTrack(idx int, gen uint64) {
 			}
 			mw.player.SetDuration(time.Duration(song.Duration) * time.Second)
 		}
+		if song.Waveform == nil {
+			if mw.prescanBridge != nil {
+				log.Printf("[Waveform] Triggering play scan for resolved provider track: %s", streamURL)
+				mw.prescanBridge.SubmitSong(streamURL, song.StreamHeaders)
+			}
+		}
 		if err := mw.player.Play(); err != nil {
 			mw.transitioning = false
 			log.Println("Failed to play:", err)
@@ -2345,7 +2351,7 @@ func (mw *MainWindow) handleScanResult(res ffmpeg.ScanResult) {
 	log.Printf("[Waveform] Scan succeeded for %s with %d data points", res.Path, len(res.Waveform.Data))
 	matched := false
 	for i, s := range mw.songs {
-		if s.Location == res.Path {
+		if s.Location == res.Path || (s.StreamURL != "" && s.StreamURL == res.Path) {
 			mw.songs[i].Waveform = res.Waveform
 			if i == mw.playingIdx {
 				if mw.waveformOverlay != nil {

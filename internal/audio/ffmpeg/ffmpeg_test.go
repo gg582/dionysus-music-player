@@ -118,7 +118,7 @@ func TestPrescan(t *testing.T) {
 		t.Skipf("could not generate WMA fixture: %v: %s", err, out)
 	}
 
-	wf, _, err := Prescan(path)
+	wf, _, err := Prescan(path, nil)
 	if err != nil {
 		t.Fatalf("Prescan() error = %v", err)
 	}

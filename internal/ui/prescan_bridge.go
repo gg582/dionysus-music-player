@@ -39,6 +39,11 @@ func (pb *PrescanBridge) Submit(path string) bool {
 	return pb.pool.Submit(path)
 }
 
+// SubmitSong enqueues a file path with optional headers for background scanning.
+func (pb *PrescanBridge) SubmitSong(path string, headers map[string]string) bool {
+	return pb.pool.SubmitSong(path, headers)
+}
+
 // Close shuts down the pool.
 func (pb *PrescanBridge) Close() {
 	pb.pool.Close()
