@@ -16,6 +16,7 @@ const (
 	PlayModeSequential PlayMode = iota // play next track, stop at end
 	PlayModeRepeatAll                  // repeat the entire queue
 	PlayModeRepeatOne                  // repeat the current track
+	PlayModeSingle                     // play the current track, then stop
 )
 
 func (pm PlayMode) String() string {
@@ -26,6 +27,8 @@ func (pm PlayMode) String() string {
 		return "Repeat All"
 	case PlayModeRepeatOne:
 		return "Repeat One"
+	case PlayModeSingle:
+		return "Single"
 	}
 	return "Unknown"
 }
@@ -37,6 +40,8 @@ func (pm PlayMode) Next() PlayMode {
 	case PlayModeRepeatAll:
 		return PlayModeRepeatOne
 	case PlayModeRepeatOne:
+		return PlayModeSingle
+	case PlayModeSingle:
 		return PlayModeSequential
 	}
 	return PlayModeSequential

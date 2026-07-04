@@ -81,6 +81,7 @@ const (
 	RepeatMode_REPEAT_MODE_SEQUENTIAL  RepeatMode = 1
 	RepeatMode_REPEAT_MODE_REPEAT_ALL  RepeatMode = 2
 	RepeatMode_REPEAT_MODE_REPEAT_ONE  RepeatMode = 3
+	RepeatMode_REPEAT_MODE_SINGLE      RepeatMode = 4
 )
 
 // Enum value maps for RepeatMode.
@@ -90,12 +91,14 @@ var (
 		1: "REPEAT_MODE_SEQUENTIAL",
 		2: "REPEAT_MODE_REPEAT_ALL",
 		3: "REPEAT_MODE_REPEAT_ONE",
+		4: "REPEAT_MODE_SINGLE",
 	}
 	RepeatMode_value = map[string]int32{
 		"REPEAT_MODE_UNSPECIFIED": 0,
 		"REPEAT_MODE_SEQUENTIAL":  1,
 		"REPEAT_MODE_REPEAT_ALL":  2,
 		"REPEAT_MODE_REPEAT_ONE":  3,
+		"REPEAT_MODE_SINGLE":      4,
 	}
 )
 
@@ -2206,13 +2209,14 @@ const file_api_player_v1_player_proto_rawDesc = "" +
 	"\x1aPLAYBACK_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PLAYBACK_STATE_STOPPED\x10\x01\x12\x1a\n" +
 	"\x16PLAYBACK_STATE_PLAYING\x10\x02\x12\x19\n" +
-	"\x15PLAYBACK_STATE_PAUSED\x10\x03*}\n" +
+	"\x15PLAYBACK_STATE_PAUSED\x10\x03*\x95\x01\n" +
 	"\n" +
 	"RepeatMode\x12\x1b\n" +
 	"\x17REPEAT_MODE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16REPEAT_MODE_SEQUENTIAL\x10\x01\x12\x1a\n" +
 	"\x16REPEAT_MODE_REPEAT_ALL\x10\x02\x12\x1a\n" +
-	"\x16REPEAT_MODE_REPEAT_ONE\x10\x03*\x8e\x02\n" +
+	"\x16REPEAT_MODE_REPEAT_ONE\x10\x03\x12\x16\n" +
+	"\x12REPEAT_MODE_SINGLE\x10\x04*\x8e\x02\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!EVENT_TYPE_PLAYBACK_STATE_CHANGED\x10\x01\x12\x1c\n" +

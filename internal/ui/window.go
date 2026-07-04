@@ -1460,6 +1460,8 @@ func (mw *MainWindow) onTrackFinished() {
 				mw.onStop()
 			}
 		}
+	case models.PlayModeSingle:
+		mw.onStop()
 	default: // Sequential
 		if !mw.playNext() {
 			mw.onStop()
@@ -1564,6 +1566,8 @@ func (mw *MainWindow) updateRepeatButton() {
 		label = "\U0001F501"
 	case models.PlayModeRepeatOne:
 		label = "\U0001F502"
+	case models.PlayModeSingle:
+		label = "\u2776"
 	}
 	mw.btnRepeatLabel.SetText(label)
 	if mw.btnRepeat != nil {

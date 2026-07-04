@@ -532,6 +532,8 @@ func repeatModeToProto(mode models.PlayMode) playerv1.RepeatMode {
 		return playerv1.RepeatMode_REPEAT_MODE_REPEAT_ALL
 	case models.PlayModeRepeatOne:
 		return playerv1.RepeatMode_REPEAT_MODE_REPEAT_ONE
+	case models.PlayModeSingle:
+		return playerv1.RepeatMode_REPEAT_MODE_SINGLE
 	default:
 		return playerv1.RepeatMode_REPEAT_MODE_UNSPECIFIED
 	}
@@ -545,6 +547,8 @@ func protoToRepeatMode(mode playerv1.RepeatMode) models.PlayMode {
 		return models.PlayModeRepeatAll
 	case playerv1.RepeatMode_REPEAT_MODE_REPEAT_ONE:
 		return models.PlayModeRepeatOne
+	case playerv1.RepeatMode_REPEAT_MODE_SINGLE:
+		return models.PlayModeSingle
 	default:
 		return models.PlayModeSequential
 	}

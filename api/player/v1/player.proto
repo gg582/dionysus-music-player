@@ -22,6 +22,7 @@ enum RepeatMode {
   REPEAT_MODE_SEQUENTIAL = 1;
   REPEAT_MODE_REPEAT_ALL = 2;
   REPEAT_MODE_REPEAT_ONE = 3;
+  REPEAT_MODE_SINGLE = 4;
 }
 
 enum EventType {
