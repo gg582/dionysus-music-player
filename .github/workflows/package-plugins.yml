@@ -30,6 +30,8 @@ env:
   INNO_SETUP_VERSION: '6.4.2'
   PLUGIN_REPO: 'https://github.com/gosuda/gozik-yt-music.git'
   PLUGIN_DIR: 'gozik-yt-music'
+  SPOTIFY_PLUGIN_REPO: 'https://github.com/gosuda/gozik-spotify.git'
+  SPOTIFY_PLUGIN_DIR: 'gozik-spotify'
   BINARY_NAME: 'gozik-yt-music-server'
   DAEMON_DESCRIPTION: 'gozik YouTube Music gRPC plugin server'
   DAEMON_PORT: '50052'
@@ -998,6 +1000,104 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  build-spotify:
+    name: 'Spotify ${{ matrix.os }}/${{ matrix.arch }} — Go bundle'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            arch: amd64
+            asset-suffix: windows-amd64
+            ytdlp-url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+            archive: zip
+          - os: windows
+            arch: arm64
+            asset-suffix: windows-arm64
+            ytdlp-url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+            archive: zip
+          - os: darwin
+            arch: arm64
+            asset-suffix: macos-arm64
+            ytdlp-url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+            archive: tar.gz
+          - os: linux
+            arch: amd64
+            asset-suffix: linux-amd64
+            ytdlp-url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+            archive: tar.gz
+          - os: linux
+            arch: arm64
+            asset-suffix: linux-arm64
+            ytdlp-url: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.6'
+      - name: Derive version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/plugin-v* ]]; then
+            VER="${GITHUB_REF_NAME#plugin-v}"
+          else
+            VER="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+      - name: Clone spotify plugin repository
+        run: |
+          cd "${{ github.workspace }}"
+          cd ..
+          git clone --depth 1 "${{ env.SPOTIFY_PLUGIN_REPO }}" "${{ env.SPOTIFY_PLUGIN_DIR }}"
+      - name: Build spotify plugin bundle
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ steps.version.outputs.ver }}
+          YTDLP_URL: ${{ matrix.ytdlp-url }}
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}/../${{ env.SPOTIFY_PLUGIN_DIR }}"
+          mkdir -p package
+
+          exe="gozik-spotify"
+          ytdlp="yt-dlp"
+          if [[ "${GOOS}" == "windows" ]]; then
+            exe="gozik-spotify.exe"
+            ytdlp="yt-dlp.exe"
+          fi
+
+          go build -ldflags="-s -w" -o "package/${exe}" ./cmd/gozik-spotify
+          curl -fsSL -o "package/${ytdlp}" "${YTDLP_URL}"
+          chmod +x "package/${exe}" "package/${ytdlp}"
+          cp -R packaging "package/packaging"
+
+          if [[ "${GOOS}" == "windows" ]]; then
+            curl -fsSL -o nssm.zip "https://nssm.cc/release/nssm-2.24.zip"
+            unzip -q nssm.zip
+            cp nssm-2.24/win64/nssm.exe package/nssm.exe
+          fi
+
+          mkdir -p "${{ github.workspace }}/spotify-artifacts"
+          asset_base="gozik-spotify-plugin-${{ matrix.asset-suffix }}-${VERSION}"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            (cd package && zip -r "${{ github.workspace }}/spotify-artifacts/${asset_base}.zip" .)
+          else
+            tar -czf "${{ github.workspace }}/spotify-artifacts/${asset_base}.tar.gz" -C package .
+          fi
+          ls -lh "${{ github.workspace }}/spotify-artifacts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spotify-plugin-${{ matrix.asset-suffix }}
+          path: spotify-artifacts/*
+          retention-days: 30
+          if-no-files-found: error
+
   release:
     name: 'Publish GitHub Release'
     runs-on: ubuntu-latest
@@ -1009,18 +1109,19 @@ jobs:
       - build-linux-amd64
       - build-linux-arm64
       - build-linux-riscv64
+      - build-spotify
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-          pattern: 'ytmusic-plugin-*'
+          pattern: '*-plugin-*'
           merge-multiple: true
       - name: Generate checksums
         run: |
           cd release-artifacts
-          echo '# SHA-256 checksums for gozik YouTube Music Plugin artefacts' > SHA256SUMS.txt
+          echo '# SHA-256 checksums for gozik plugin artefacts' > SHA256SUMS.txt
           echo "# Generated: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> SHA256SUMS.txt
           echo '' >> SHA256SUMS.txt
           find . -type f ! -name 'SHA256SUMS.txt' | sort | while read -r f; do
@@ -1031,28 +1132,28 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/plugin-v')
         uses: softprops/action-gh-release@v2
         with:
-          name: 'gozik YouTube Music Plugin ${{ github.ref_name }}'
+          name: 'gozik Plugins ${{ github.ref_name }}'
           tag_name: ${{ github.ref_name }}
           body: |
-            ## gozik YouTube Music Plugin — ${{ github.ref_name }}
+            ## gozik Plugins — ${{ github.ref_name }}
 
-            Standalone gRPC plugin server for the gozik music player.
-            Built with PyInstaller ${{ env.PYINSTALLER_VERSION }} in onedir mode — no Python interpreter required on target machines.
+            Standalone gRPC plugin servers for the gozik music player.
+            YouTube Music is built with PyInstaller ${{ env.PYINSTALLER_VERSION }} in onedir mode. Spotify is built as a Go bundle with yt-dlp included.
 
             ### Platform packages
 
             | Platform | Format | Notes |
             |---|---|---|
-            | Windows AMD64 | `.exe` installer | Registers `GozikYTMusicPlugin` Windows service via NSSM |
-            | Windows ARM64 | `.exe` installer | Registers `GozikYTMusicPlugin` Windows service via NSSM |
-            | macOS ARM64 | `.dmg` | Run `install-daemon.sh` once to register the LaunchAgent |
-            | Linux AMD64 | `.AppImage` | AppRun installs systemd user-unit on first launch |
-            | Linux ARM64 | `.AppImage` | AppRun installs systemd user-unit on first launch |
-            | Linux RISCV64 | `.AppImage` | Best-effort; grpcio wheel availability may vary |
+            | YouTube Music Windows AMD64/ARM64 | `.exe` installer | Registers `GozikYTMusicPlugin` Windows service via NSSM |
+            | YouTube Music macOS ARM64 | `.dmg` | Run `install-daemon.sh` once to register the LaunchAgent |
+            | YouTube Music Linux AMD64/ARM64/RISCV64 | `.AppImage` | AppRun installs systemd user-unit on first launch |
+            | Spotify Windows AMD64/ARM64 | `.zip` | Run `packaging/windows/install-service.ps1` as Administrator |
+            | Spotify macOS ARM64 | `.tar.gz` | Run `packaging/macos/install-daemon.sh` once to register the LaunchAgent |
+            | Spotify Linux AMD64/ARM64 | `.tar.gz` | Run `packaging/linux/install-daemon.sh` once to register the systemd user unit |
 
             ### Daemon port
 
-            All packages bind to `127.0.0.1:${{ env.DAEMON_PORT }}` (loopback only).
+            YouTube Music binds to `127.0.0.1:${{ env.DAEMON_PORT }}`. Spotify binds to `127.0.0.1:50054` and serves its web UI on `127.0.0.1:50055`.
 
             ### Verify checksums
 

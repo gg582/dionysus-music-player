@@ -92,7 +92,7 @@ func (t Target) InstallerAssetName() string {
 func (t Target) ReleaseURL(version string) string {
 	tag := version
 	if tag == "" || tag == "latest" {
-		return fmt.Sprintf("https://github.com/%s/%s/releases/latest/download/%s", RepoOwner, RepoName, t.PayloadAssetName())
+		return fmt.Sprintf("https://github.com/%s/%s/releases/download/latest/%s", RepoOwner, RepoName, t.PayloadAssetName())
 	}
 	if !strings.HasPrefix(tag, "v") {
 		tag = "v" + tag

@@ -76,7 +76,7 @@ func TestReleaseURLNormalizesVersion(t *testing.T) {
 	cases := []struct {
 		version, wantSub string
 	}{
-		{"latest", "/releases/latest/download/"},
+		{"latest", "/releases/download/latest/"},
 		{"1.2.3", "/releases/download/v1.2.3/"},
 		{"v1.2.3", "/releases/download/v1.2.3/"},
 	}
