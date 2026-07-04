@@ -95,3 +95,35 @@ func TestDecodeFFmpegWMA(t *testing.T) {
 		t.Fatalf("Stream() = %d, %v; want audio", n, ok)
 	}
 }
+
+func TestPrescan(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+
+	path := filepath.Join(t.TempDir(), "tone.wma")
+	cmd := exec.Command(
+		"ffmpeg",
+		"-y",
+		"-hide_banner",
+		"-loglevel", "error",
+		"-f", "lavfi",
+		"-i", "sine=frequency=440:duration=1.0",
+		"-ac", "2",
+		"-ar", "44100",
+		"-c:a", "wmav2",
+		path,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("could not generate WMA fixture: %v: %s", err, out)
+	}
+
+	wf, _, err := Prescan(path)
+	if err != nil {
+		t.Fatalf("Prescan() error = %v", err)
+	}
+	if wf == nil {
+		t.Fatal("Prescan() returned nil waveform")
+	}
+	t.Logf("Waveform data length: %d", len(wf.Data))
+}
