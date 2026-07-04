@@ -1045,6 +1045,41 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 		return
 	}
 
+	eventBox, err := gtk.EventBoxNew()
+	if err != nil {
+		return
+	}
+	eventBox.SetName("playlist-row-eventbox")
+
+	target, err := gtk.TargetEntryNew("text/plain", gtk.TARGET_SAME_APP, 0)
+	if err == nil {
+		targets := []gtk.TargetEntry{*target}
+		eventBox.DragSourceSet(gdk.BUTTON1_MASK, targets, gdk.ACTION_MOVE)
+		eventBox.DragDestSet(gtk.DEST_DEFAULT_ALL, targets, gdk.ACTION_MOVE)
+
+		eventBox.Connect("drag-data-get", func(eb *gtk.EventBox, ctx *gdk.DragContext, data *gtk.SelectionData, info, time uint) {
+			idx := row.GetIndex()
+			data.SetText(fmt.Sprintf("%d", idx))
+		})
+
+		eventBox.Connect("drag-data-received", func(eb *gtk.EventBox, ctx *gdk.DragContext, x, y int, data *gtk.SelectionData, info, time uint) {
+			srcIdxStr := data.GetText()
+			var srcIdx int
+			_, err := fmt.Sscanf(srcIdxStr, "%d", &srcIdx)
+			if err != nil {
+				dragFinish(ctx, false, false, time)
+				return
+			}
+			destIdx := row.GetIndex()
+			if srcIdx == destIdx {
+				dragFinish(ctx, false, false, time)
+				return
+			}
+			mw.reorderSongs(srcIdx, destIdx)
+			dragFinish(ctx, true, false, time)
+		})
+	}
+
 	box, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
 	if err != nil {
 		return
@@ -1105,11 +1140,12 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 	box.PackStart(infoBox, true, true, 0)
 	box.PackEnd(btn, false, false, 0)
 	box.PackEnd(dur, false, false, 0)
-	row.Add(box)
+	eventBox.Add(box)
+	row.Add(eventBox)
 	row.ShowAll()
 
-	mw.listBox.Add(row)
 	mw.rows = append(mw.rows, &songRow{row: row, lead: lead, title: title, artist: artist, dur: dur})
+	mw.listBox.Add(row)
 
 	mw.refreshRowDisplay(len(mw.songs) - 1)
 	mw.refreshPlayingHighlight()
@@ -2134,4 +2170,54 @@ func isSupported(ext string) bool {
 		return true
 	}
 	return false
+}
+
+func (mw *MainWindow) reorderSongs(srcIdx, destIdx int) {
+	if srcIdx < 0 || srcIdx >= len(mw.songs) || destIdx < 0 || destIdx >= len(mw.songs) || srcIdx == destIdx {
+		return
+	}
+
+	// Save moving song
+	song := mw.songs[srcIdx]
+
+	// Shift the songs array
+	mw.songs = append(mw.songs[:srcIdx], mw.songs[srcIdx+1:]...)
+	mw.songs = append(mw.songs[:destIdx], append([]models.Song{song}, mw.songs[destIdx:]...)...)
+
+	// Update indices
+	mw.selectedIdx = shiftIdx(mw.selectedIdx, srcIdx, destIdx)
+	mw.playingIdx = shiftIdx(mw.playingIdx, srcIdx, destIdx)
+
+	// Refresh the row contents (labels, title, artist, duration) for all affected rows
+	start := srcIdx
+	end := destIdx
+	if srcIdx > destIdx {
+		start = destIdx
+		end = srcIdx
+	}
+	for i := start; i <= end; i++ {
+		mw.refreshRowDisplay(i)
+	}
+
+	// Update the physical selection to match the new selected index
+	if mw.selectedIdx >= 0 && mw.selectedIdx < len(mw.rows) {
+		mw.listBox.SelectRow(mw.listBox.GetRowAtIndex(mw.selectedIdx))
+	}
+
+	// Refresh highlighting and numbering
+	mw.refreshPlayingHighlight()
+	mw.updateQueueHeader()
+}
+
+func shiftIdx(idx, src, dest int) int {
+	if idx == src {
+		return dest
+	}
+	if src < idx && dest >= idx {
+		return idx - 1
+	}
+	if src > idx && dest <= idx {
+		return idx + 1
+	}
+	return idx
 }

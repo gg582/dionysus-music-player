@@ -270,6 +270,9 @@ button image {
 }
 
 /* ---------- songlist rows (built in Go) ---------- */
+#playlist-row-eventbox {
+  background-color: transparent;
+}
 #row-lead {
   font-family: monospace;
   font-size: 12px;
