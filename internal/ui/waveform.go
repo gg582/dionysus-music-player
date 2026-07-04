@@ -10,9 +10,12 @@ import (
 
 // WaveformOverlay is a GTK DrawingArea that renders a 200-point RMS waveform.
 type WaveformOverlay struct {
-	mu        sync.RWMutex
-	waveform  *models.Waveform
-	drawing   *gtk.DrawingArea
+	mu       sync.RWMutex
+	waveform *models.Waveform
+	drawing  *gtk.DrawingArea
+	colorR   float64
+	colorG   float64
+	colorB   float64
 }
 
 // NewWaveformOverlay creates a new waveform widget.
@@ -21,7 +24,12 @@ func NewWaveformOverlay() (*WaveformOverlay, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &WaveformOverlay{drawing: da}
+	w := &WaveformOverlay{
+		drawing: da,
+		colorR:  0.37,
+		colorG:  0.83,
+		colorB:  0.88, // Default cosmic cyan color #5FD3E0
+	}
 	da.Connect("draw", w.onDraw)
 	return w, nil
 }
@@ -39,10 +47,21 @@ func (w *WaveformOverlay) SetWaveform(wf *models.Waveform) {
 	w.drawing.QueueDraw()
 }
 
+// SetColor updates the waveform rendering color and queues a redraw.
+func (w *WaveformOverlay) SetColor(r, g, b float64) {
+	w.mu.Lock()
+	w.colorR = r
+	w.colorG = g
+	w.colorB = b
+	w.mu.Unlock()
+	w.drawing.QueueDraw()
+}
+
 // onDraw renders 200 vertical amplitude bars centered vertically.
 func (w *WaveformOverlay) onDraw(da *gtk.DrawingArea, cr *cairo.Context) bool {
 	w.mu.RLock()
 	wf := w.waveform
+	r, g, b := w.colorR, w.colorG, w.colorB
 	w.mu.RUnlock()
 
 	if wf == nil {
@@ -66,7 +85,7 @@ func (w *WaveformOverlay) onDraw(da *gtk.DrawingArea, cr *cairo.Context) bool {
 		cr.Rectangle(x, y, barWidth-gap, barHeight)
 	}
 
-	cr.SetSourceRGB(0.35, 0.65, 0.95)
+	cr.SetSourceRGB(r, g, b)
 	cr.Fill()
 	return false
 }

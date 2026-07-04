@@ -97,6 +97,9 @@ type MainWindow struct {
 	app                *gtk.Application
 	trayIndicator      tray.Indicator
 	btnCloseToTray     *gtk.Button
+	dynamicCssProvider *gtk.CssProvider
+	waveformOverlay    *WaveformOverlay
+	prescanBridge      *PrescanBridge
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -332,6 +335,36 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	})
 
 	mw.initTrayIndicator()
+
+	// Initialize dynamic CSS provider for cover art theme
+	mw.dynamicCssProvider, err = gtk.CssProviderNew()
+	if err == nil && mw.dynamicCssProvider != nil {
+		if ctx, err := mw.win.GetStyleContext(); err == nil {
+			ctx.AddProvider(mw.dynamicCssProvider, uint(gtk.STYLE_PROVIDER_PRIORITY_APPLICATION))
+		}
+	}
+
+	// Initialize WaveformOverlay DrawingArea
+	wf, err := NewWaveformOverlay()
+	if err == nil && wf != nil {
+		mw.waveformOverlay = wf
+		if seekRow, err := mw.progressBar.GetParent(); err == nil {
+			if transportBox, err := seekRow.ToWidget().GetParent(); err == nil {
+				if box, ok := transportBox.(*gtk.Box); ok {
+					wf.drawing.SetSizeRequest(-1, 35)
+					wf.drawing.SetMarginBottom(8)
+					wf.drawing.SetMarginTop(8)
+					box.PackStart(wf.drawing, false, false, 0)
+					wf.drawing.Show()
+				}
+			}
+		}
+	}
+
+	// Initialize PrescanBridge for background waveform scanning
+	mw.prescanBridge = NewPrescanBridge(2, 64, func(res ffmpeg.ScanResult) {
+		mw.handleScanResult(res)
+	})
 
 	mw.updateProviderButtonVisibility()
 	mw.startProviderPolling()
@@ -682,8 +715,10 @@ func (mw *MainWindow) setupControls(builder *gtk.Builder) {
 				// dragging the slider exits the muted (gray) state
 				if v > 0 && mw.muted {
 					mw.muted = false
-					mw.updateVolumeVisual()
+				} else if v <= 0 && !mw.muted {
+					mw.muted = true
 				}
+				mw.updateVolumeVisual()
 				mw.publishVolumeChanged()
 			})
 		}
@@ -726,9 +761,13 @@ func (mw *MainWindow) toggleMute() {
 
 // updateVolumeVisual swaps the speaker icon and the gray "muted" slider class.
 func (mw *MainWindow) updateVolumeVisual() {
+	if mw.volumeScale == nil {
+		return
+	}
+	v := mw.volumeScale.GetValue()
 	if mw.volumeScale != nil {
 		if ctx, err := mw.volumeScale.GetStyleContext(); err == nil {
-			if mw.muted {
+			if mw.muted || v <= 0 {
 				ctx.AddClass("muted")
 			} else {
 				ctx.RemoveClass("muted")
@@ -736,8 +775,12 @@ func (mw *MainWindow) updateVolumeVisual() {
 		}
 	}
 	if mw.volumeIcon != nil {
-		if mw.muted {
+		if mw.muted || v <= 0 {
 			mw.volumeIcon.SetFromIconName("audio-volume-muted-symbolic", gtk.ICON_SIZE_BUTTON)
+		} else if v < 0.33 {
+			mw.volumeIcon.SetFromIconName("audio-volume-low-symbolic", gtk.ICON_SIZE_BUTTON)
+		} else if v < 0.66 {
+			mw.volumeIcon.SetFromIconName("audio-volume-medium-symbolic", gtk.ICON_SIZE_BUTTON)
 		} else {
 			mw.volumeIcon.SetFromIconName("audio-volume-high-symbolic", gtk.ICON_SIZE_BUTTON)
 		}
@@ -790,6 +833,10 @@ func (mw *MainWindow) onQuit(app *gtk.Application) {
 	if mw.trayIndicator != nil {
 		mw.trayIndicator.Close()
 		mw.trayIndicator = nil
+	}
+	if mw.prescanBridge != nil {
+		mw.prescanBridge.Close()
+		mw.prescanBridge = nil
 	}
 	mw.closeGRPC()
 	app.Quit()
@@ -1153,6 +1200,9 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 
 	// Probe duration in the background so the queue total + row time fill in.
 	if !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
+		if mw.prescanBridge != nil {
+			mw.prescanBridge.Submit(song.Location)
+		}
 		loc := song.Location
 		go func() {
 			d, err := formats.ProbeDuration(loc)
@@ -1325,6 +1375,9 @@ func (mw *MainWindow) playAtIndex(explicitIdx int) {
 		return
 	}
 	mw.playingIdx = idx
+	if mw.waveformOverlay != nil {
+		mw.waveformOverlay.SetWaveform(song.Waveform)
+	}
 	// Re-apply current volume so ReplayGain is refreshed for the new track.
 	if mw.volumeScale != nil {
 		mw.player.SetVolume(mw.volumeScale.GetValue())
@@ -1992,6 +2045,12 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 	}
 	if len(data) == 0 {
 		mw.albumCover.Clear()
+		if mw.dynamicCssProvider != nil {
+			mw.dynamicCssProvider.LoadFromData("")
+		}
+		if mw.waveformOverlay != nil {
+			mw.waveformOverlay.SetColor(0.37, 0.83, 0.88)
+		}
 		return
 	}
 	loader, err := gdk.PixbufLoaderNew()
@@ -2003,6 +2062,47 @@ func (mw *MainWindow) setAlbumCover(data []byte) {
 	pixbuf, err := loader.GetPixbuf()
 	if err != nil {
 		return
+	}
+
+	// Dynamic background theme color based on album art
+	r, g, b := getAverageColor(pixbuf)
+	if mw.dynamicCssProvider != nil {
+		starsBg := "stars.png"
+		var vignetteColor string
+		if mw.isDarkTheme() {
+			starsBg = "stars.png"
+			vignetteColor = "rgba(0,0,0,0.50)"
+		} else {
+			starsBg = "stars-light.png"
+			vignetteColor = "rgba(0,0,0,0.08)"
+		}
+		css := fmt.Sprintf(`
+window {
+  background-image:
+    url("%s"),
+    radial-gradient(farthest-side at 82%% 6%%,  rgba(%d,%d,%d,0.18), transparent),
+    radial-gradient(farthest-side at 16%% 102%%, rgba(%d,%d,%d,0.08), transparent),
+    radial-gradient(farthest-corner at 50%% 34%%, transparent 58%%, %s);
+}
+`, starsBg, r, g, b, r, g, b, vignetteColor)
+		mw.dynamicCssProvider.LoadFromData(css)
+	}
+
+	// Update active waveform color based on album art dominant color
+	if mw.waveformOverlay != nil {
+		nr := float64(r) / 255.0
+		ng := float64(g) / 255.0
+		nb := float64(b) / 255.0
+		maxVal := nr
+		if ng > maxVal { maxVal = ng }
+		if nb > maxVal { maxVal = nb }
+		if maxVal < 0.4 {
+			factor := 0.4 / maxVal
+			nr *= factor
+			ng *= factor
+			nb *= factor
+		}
+		mw.waveformOverlay.SetColor(nr, ng, nb)
 	}
 
 	const boxSize = 280
@@ -2224,4 +2324,52 @@ func shiftIdx(idx, src, dest int) int {
 		return idx + 1
 	}
 	return idx
+}
+
+func (mw *MainWindow) handleScanResult(res ffmpeg.ScanResult) {
+	if res.Err != nil || res.Waveform == nil {
+		return
+	}
+	for i, s := range mw.songs {
+		if s.Location == res.Path {
+			mw.songs[i].Waveform = res.Waveform
+			if i == mw.playingIdx {
+				if mw.waveformOverlay != nil {
+					mw.waveformOverlay.SetWaveform(res.Waveform)
+				}
+			}
+			break
+		}
+	}
+}
+
+func getAverageColor(pixbuf *gdk.Pixbuf) (r, g, b int) {
+	pixels := pixbuf.GetPixels()
+	width := pixbuf.GetWidth()
+	height := pixbuf.GetHeight()
+	rowstride := pixbuf.GetRowstride()
+	channels := pixbuf.GetNChannels()
+
+	var sumR, sumG, sumB int64
+	var count int64
+
+	// Sample every 4th pixel for performance
+	for y := 0; y < height; y += 4 {
+		rowStart := y * rowstride
+		for x := 0; x < width; x += 4 {
+			idx := rowStart + x*channels
+			if idx+2 < len(pixels) {
+				sumR += int64(pixels[idx])
+				sumG += int64(pixels[idx+1])
+				sumB += int64(pixels[idx+2])
+				count++
+			}
+		}
+	}
+
+	if count == 0 {
+		return 95, 211, 224 // Default cosmic cyan color #5FD3E0
+	}
+
+	return int(sumR / count), int(sumG / count), int(sumB / count)
 }
