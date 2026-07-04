@@ -340,7 +340,7 @@ func NewMainWindow(app *gtk.Application, mgr *provider.Manager) (*MainWindow, er
 	mw.dynamicCssProvider, err = gtk.CssProviderNew()
 	if err == nil && mw.dynamicCssProvider != nil {
 		if ctx, err := mw.win.GetStyleContext(); err == nil {
-			ctx.AddProvider(mw.dynamicCssProvider, uint(gtk.STYLE_PROVIDER_PRIORITY_APPLICATION))
+			ctx.AddProvider(mw.dynamicCssProvider, uint(gtk.STYLE_PROVIDER_PRIORITY_USER+10))
 		}
 	}
 

@@ -64,12 +64,18 @@ func (w *WaveformOverlay) onDraw(da *gtk.DrawingArea, cr *cairo.Context) bool {
 	r, g, b := w.colorR, w.colorG, w.colorB
 	w.mu.RUnlock()
 
+	width := float64(da.GetAllocatedWidth())
+	height := float64(da.GetAllocatedHeight())
+
 	if wf == nil {
+		cr.SetSourceRGB(r, g, b)
+		cr.SetLineWidth(1.0)
+		cr.MoveTo(0, height/2)
+		cr.LineTo(width, height/2)
+		cr.Stroke()
 		return false
 	}
 
-	width := float64(da.GetAllocatedWidth())
-	height := float64(da.GetAllocatedHeight())
 	barWidth := width / 200.0
 	gap := 1.0
 	if barWidth < 2.0 {

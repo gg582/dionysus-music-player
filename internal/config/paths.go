@@ -24,6 +24,11 @@ func AssetPath(rel string) string {
 		candidates = append(candidates, filepath.Join(env, rel))
 	}
 
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidates = append(candidates, filepath.Join(execDir, "assets", rel))
+	}
+
 	// Development fallback relative to working directory (prioritized for local runs).
 	candidates = append(candidates, filepath.Join(".", "assets", rel))
 
