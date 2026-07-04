@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	hangul "github.com/gg582/hangul-logotype/hangul"
+	"golang.org/x/text/unicode/norm"
 )
 
 // compatibilityJamo reports whether r is a Hangul Compatibility Jamo character
@@ -18,6 +19,7 @@ func compatibilityJamo(r rune) bool {
 // existing composed Hangul are passed through unchanged so English file names
 // or URLs are never transliterated.
 func composeHangulJamos(input string) string {
+	input = norm.NFC.String(input)
 	var out bytes.Buffer
 	var jamoBuf []rune
 

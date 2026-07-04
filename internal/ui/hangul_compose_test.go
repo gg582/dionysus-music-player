@@ -16,6 +16,9 @@ func TestComposeHangulJamos(t *testing.T) {
 		{"test.mp3", "test.mp3"},
 		{"ㅎㅏㄴㄱㅡㄹ world", "한글 world"},
 		{"가ㅁ", "가ㅁ"},
+		{"\u1100\u1161\u11a8", "각"},
+		{"\u1100\u1165\u11ab\u1100\u1173\u11af", "건글"},
+		{"\u1100\u1165\u11ab\u1100\u1173\u11af.mp3", "건글.mp3"},
 		{"", ""},
 	}
 
