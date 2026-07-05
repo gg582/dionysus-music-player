@@ -316,19 +316,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            mapfile -t existing_assets < <(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' 2>/dev/null || true)
-
-            while IFS= read -r -d '' file; do
-              name="$(basename "$file")"
-              if printf '%s\n' "${existing_assets[@]}" | grep -Fxq "$name"; then
-                echo "Skipping already published asset: $name"
-                rm -f "$file"
-              fi
-            done < <(find artifacts -type f -print0)
-          fi
-
           if find artifacts -type f | grep -q .; then
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           else
@@ -343,4 +330,4 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: artifacts/*
           generate_release_notes: true
-          overwrite_files: ${{ github.event_name == 'workflow_dispatch' }}
+          overwrite: true

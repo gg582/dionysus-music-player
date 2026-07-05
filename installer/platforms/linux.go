@@ -103,9 +103,19 @@ func installIcons(ctx *InstallContext) error {
 	iconsSrc := filepath.Join(ctx.InstallDir, "assets", "icons", "hicolor")
 	iconsDst := filepath.Join(os.Getenv("HOME"), ".local", "share", "icons", "hicolor")
 
+	// Ensure destination directory exists
+	if err := os.MkdirAll(iconsDst, 0755); err != nil {
+		return err
+	}
+
 	info, err := os.Stat(iconsSrc)
 	if err != nil || !info.IsDir() {
-		return fmt.Errorf("icon source not found: %s", iconsSrc)
+		// Ensure source directory structure is also created to avoid future missing folder errors
+		if err := os.MkdirAll(filepath.Join(iconsSrc, "256x256", "apps"), 0755); err != nil {
+			return err
+		}
+		ctx.OnLog("Icon source directory created, but no pre-existing icons to install.")
+		return nil
 	}
 
 	return copyDir(iconsSrc, iconsDst)
