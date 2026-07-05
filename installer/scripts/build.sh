@@ -34,6 +34,20 @@ for spec in "${TARGETS[@]}"; do
     go build -ldflags="-s -w -X main.defaultVersion=${DEFAULT_VERSION}" -o "${OUTPUT_DIR}/${output}" .
 done
 
+echo "Building uninstallers..."
+for spec in "${TARGETS[@]}"; do
+  read -r goos goarch suffix <<< "$spec"
+  name="$goos"
+  if [ "$goos" = "darwin" ]; then
+    name="macos"
+  fi
+  output="gozik-uninstaller-${name}-${goarch}${suffix}"
+  echo "Building $output ..."
+  cd "${PROJECT_ROOT}/uninstaller"
+  env GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+    go build -ldflags="-s -w" -o "${OUTPUT_DIR}/${output}" .
+done
+
 echo ""
-echo "Installers written to ${OUTPUT_DIR}/"
+echo "Installers and Uninstallers written to ${OUTPUT_DIR}/"
 ls -lh "${OUTPUT_DIR}"

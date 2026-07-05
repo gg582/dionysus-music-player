@@ -295,7 +295,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: gozik-installers
-          path: installer/dist/gozik-installer-*
+          path: |
+            installer/dist/gozik-installer-*
+            installer/dist/gozik-uninstaller-*
 
   release:
     runs-on: ubuntu-latest
