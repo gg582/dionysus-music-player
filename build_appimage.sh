@@ -144,9 +144,24 @@ copy_needed_libs() {
     | grep 'NEEDED' | sed 's/.*\[\(.*\)\].*/\1/' || true)
 
   for lib in $needed; do
-    # Skip standard C runtime libs that belong to the host system
+    # Skip standard C runtime and basic system/UI libraries that belong to the host system
     case "$lib" in
       libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|ld-linux*.so*|ld64.so*|linux-vdso.so*)
+        continue
+        ;;
+      libglib-2.0.so*|libgobject-2.0.so*|libgio-2.0.so*|libgmodule-2.0.so*|libgthread-2.0.so*)
+        continue
+        ;;
+      libgtk-3.so*|libgdk-3.so*|libatk-1.0.so*|libatk-bridge-2.0.so*|libcups.so*)
+        continue
+        ;;
+      libcairo.so*|libfontconfig.so*|libfreetype.so*|libpango*.so*|libharfbuzz.so*)
+        continue
+        ;;
+      libX11.so*|libXext.so*|libXrender.so*|libXi.so*|libXfixes.so*|libXcursor.so*|libXdamage.so*|libXcomposite.so*|libXrandr.so*|libXinerama.so*)
+        continue
+        ;;
+      libwayland-client.so*|libwayland-cursor.so*|libwayland-egl.so*|libffi.so*|libz.so*|libpng*.so*|libjpeg*.so*)
         continue
         ;;
     esac
