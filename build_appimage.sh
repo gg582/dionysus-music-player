@@ -161,9 +161,13 @@ copy_needed_libs() {
       libX11.so*|libXext.so*|libXrender.so*|libXi.so*|libXfixes.so*|libXcursor.so*|libXdamage.so*|libXcomposite.so*|libXrandr.so*|libXinerama.so*)
         continue
         ;;
-      libwayland-client.so*|libwayland-cursor.so*|libwayland-egl.so*|libffi.so*|libz.so*|libpng*.so*|libjpeg*.so*)
+      libwayland-client.so*|libwayland-cursor.so*|libwayland-egl.so*|libffi.so*)
         continue
         ;;
+      # Image/compression libraries are bundled because SONAMEs vary between
+      # distributions (e.g. libjpeg.so.8 vs libjpeg.so.62). Without them the
+      # AppImage fails on hosts that ship a different version.
+      # libz.so*|libpng*.so*|libjpeg*.so* -> bundled
     esac
 
     local found=0
