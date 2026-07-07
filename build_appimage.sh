@@ -278,21 +278,33 @@ cp -r "${PROJECT_ROOT}/assets/ui/"* "${APPDIR}/usr/share/gozik/ui/"
 # 6. AppRun launcher
 # ---------------------------------------------------------------------------
 echo "[6/8] Writing AppRun launcher..."
-cat > "${APPDIR}/AppRun" <<EOF
+cat > "${APPDIR}/AppRun" <<'EOF'
 #!/bin/bash
-HERE="\$(dirname "\$(readlink -f "\${0}")")"
-export LD_LIBRARY_PATH="\${HERE}/usr/lib:\${LD_LIBRARY_PATH:-}"
-export PATH="\${HERE}/usr/bin:\${PATH:-}"
-export GOZIK_ASSETS="\${HERE}/usr/share/gozik"
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
+export PATH="${HERE}/usr/bin:${PATH:-}"
+export GOZIK_ASSETS="${HERE}/usr/share/gozik"
 
 # Point gdk-pixbuf at bundled image loaders so PNG/JPEG/SVG icons work even
 # when the host ships incompatible loader modules or libjpeg SONAMEs.
-if [ -d "\${HERE}/usr/lib/gdk-pixbuf-2.0" ]; then
-  export GDK_PIXBUF_MODULEDIR="\$(find "\${HERE}/usr/lib/gdk-pixbuf-2.0" -maxdepth 1 -type d -name '2.*' | head -n1)/loaders"
-  export GDK_PIXBUF_MODULE_FILE="\$(dirname "\${GDK_PIXBUF_MODULEDIR}")/loaders.cache"
+if [ -d "${HERE}/usr/lib/gdk-pixbuf-2.0" ]; then
+  export GDK_PIXBUF_MODULEDIR="$(find "${HERE}/usr/lib/gdk-pixbuf-2.0" -maxdepth 1 -type d -name '2.*' | head -n1)/loaders"
+
+  # The bundled loaders.cache ships relative "loaders/..." paths so it is
+  # valid across AppImage mounts. Rewrite them to absolute paths for this
+  # mount point, because gdk-pixbuf resolves them against the current
+  # working directory otherwise.
+  BUNDLED_LOADERS_CACHE="$(dirname "${GDK_PIXBUF_MODULEDIR}")/loaders.cache"
+  if [ -f "${BUNDLED_LOADERS_CACHE}" ]; then
+    ABS_LOADERS_CACHE="$(mktemp /tmp/gozik-gdk-pixbuf-loaders.XXXXXX.cache)"
+    sed "s|\"loaders/|\"${GDK_PIXBUF_MODULEDIR}/|g" "${BUNDLED_LOADERS_CACHE}" > "${ABS_LOADERS_CACHE}"
+    export GDK_PIXBUF_MODULE_FILE="${ABS_LOADERS_CACHE}"
+  else
+    export GDK_PIXBUF_MODULE_FILE="${BUNDLED_LOADERS_CACHE}"
+  fi
 fi
 
-exec "\${HERE}/usr/bin/gozik" "\$@"
+exec "${HERE}/usr/bin/gozik" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
 
