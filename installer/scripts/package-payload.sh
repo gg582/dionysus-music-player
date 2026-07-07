@@ -52,6 +52,11 @@ package_linux_amd64() {
   mkdir -p "$stage"
   cp -L "$appimage" "$stage/gozik-amd64.AppImage"
   chmod +x "$stage/gozik-amd64.AppImage"
+  # Include a loose icon so the installer can install it without having to
+  # extract the AppImage (which may fail when FUSE is unavailable).
+  if [[ -f "$PROJECT_ROOT/gozik.png" ]]; then
+    cp "$PROJECT_ROOT/gozik.png" "$stage/gozik.png"
+  fi
   tar -czf "$OUTPUT_DIR/gozik-payload-linux-amd64.tar.gz" -C "$stage" .
   echo "Created gozik-payload-linux-amd64.tar.gz"
 }

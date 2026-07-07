@@ -1,5 +1,7 @@
 testfiles/
 testfiles/*
-./gozik
+/gozik
+/dist/
+/build-appimage-*/
 installer/dist/
 installer/gozik-installer-*

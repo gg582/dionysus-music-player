@@ -83,11 +83,17 @@ func main() {
 
 		iconsDir := filepath.Join(home, ".local", "share", "icons", "hicolor")
 		fmt.Println("Removing icons...")
-		// Rather than removing the whole directory, delete individual gozik icon files if they exist under sizes
-		sizes := []string{"16x16", "22x22", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "512x512"}
-		for _, sz := range sizes {
-			_ = os.Remove(filepath.Join(iconsDir, sz, "apps", "gozik.png"))
-		}
+		// Remove every gozik icon file under the hicolor tree, regardless of
+		// the sizes that were actually installed.
+		_ = filepath.Walk(iconsDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !info.IsDir() && filepath.Base(path) == "gozik.png" {
+				_ = os.Remove(path)
+			}
+			return nil
+		})
 
 		// Update desktop database and icon cache
 		_ = exec.Command("update-desktop-database", "-q", filepath.Join(home, ".local", "share", "applications")).Run()

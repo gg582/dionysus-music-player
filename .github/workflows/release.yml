@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libopusfile-dev libasound2-dev ffmpeg squashfs-tools binutils-multiarch
+          sudo apt-get install -y libgtk-3-dev libgdk-pixbuf2.0-dev libopusfile-dev libasound2-dev ffmpeg squashfs-tools binutils-multiarch
 
       - name: Build Linux AMD64 payload for installer
         run: |
@@ -27,6 +27,7 @@ jobs:
           mkdir -p payload
           cp -L dist/gozik-amd64.AppImage payload/gozik-amd64.AppImage
           chmod +x payload/gozik-amd64.AppImage
+          cp gozik.png payload/gozik.png
           tar -czf gozik-payload-linux-amd64.tar.gz -C payload .
 
       - uses: actions/upload-artifact@v4
@@ -295,9 +296,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: gozik-installers
-          path: |
-            installer/dist/gozik-installer-*
-            installer/dist/gozik-uninstaller-*
+          path: installer/dist/gozik-installer-*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gozik-uninstallers
+          path: installer/dist/gozik-uninstaller-*
 
   release:
     runs-on: ubuntu-latest

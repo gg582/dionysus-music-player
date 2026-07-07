@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -98,8 +99,10 @@ type MainWindow struct {
 	trayIndicator      tray.Indicator
 	btnCloseToTray     *gtk.Button
 	dynamicCssProvider *gtk.CssProvider
-	waveformOverlay    *WaveformOverlay
-	prescanBridge      *PrescanBridge
+	waveformOverlay     *WaveformOverlay
+	prescanBridge       *PrescanBridge
+	cdWaveformMu        sync.Mutex
+	cdWaveformPending   map[string]struct{}
 }
 
 // songRow holds the widgets of one songlist row so they can be updated when
@@ -1227,6 +1230,11 @@ func (mw *MainWindow) appendSongToList(song models.Song) {
 		}()
 	}
 
+	// CD tracks have no file path, so prescan them directly from the drive.
+	if song.IsCD && song.Device != "" {
+		mw.triggerCDWaveformScan(song.Device, song.TrackNum)
+	}
+
 	// Enrich the row with title/artist at import time (not only on play), so the
 	// queue shows real titles instead of file names whenever metadata is found.
 	if !song.IsCD && song.Location != "" && song.Title == "" && song.ProviderTrackID == "" {
@@ -1381,10 +1389,15 @@ func (mw *MainWindow) playAtIndex(explicitIdx int) {
 	mw.playingIdx = idx
 	if mw.waveformOverlay != nil {
 		mw.waveformOverlay.SetWaveform(song.Waveform)
-		if song.Waveform == nil && !song.IsCD && song.Location != "" && song.ProviderTrackID == "" {
-			if mw.prescanBridge != nil {
-				log.Printf("[Waveform] Triggering play scan for: %s", song.Location)
-				mw.prescanBridge.Submit(song.Location)
+		if song.Waveform == nil {
+			switch {
+			case song.IsCD && song.Device != "":
+				mw.triggerCDWaveformScan(song.Device, song.TrackNum)
+			case !song.IsCD && song.Location != "" && song.ProviderTrackID == "":
+				if mw.prescanBridge != nil {
+					log.Printf("[Waveform] Triggering play scan for: %s", song.Location)
+					mw.prescanBridge.Submit(song.Location)
+				}
 			}
 		}
 	}
@@ -2373,6 +2386,56 @@ func (mw *MainWindow) handleScanResult(res ffmpeg.ScanResult) {
 	if !matched {
 		log.Printf("[Waveform] Warning: Scanned path %s does not match any song in the active queue!", res.Path)
 	}
+}
+
+// cdWaveformKey returns a stable key for a CD device+track combination.
+func cdWaveformKey(device string, trackNum int) string {
+	return fmt.Sprintf("%s:%d", device, trackNum)
+}
+
+// triggerCDWaveformScan starts a background scan of a CD audio track to build
+// its waveform. Duplicate scans for the same device+track are ignored.
+func (mw *MainWindow) triggerCDWaveformScan(device string, trackNum int) {
+	key := cdWaveformKey(device, trackNum)
+	mw.cdWaveformMu.Lock()
+	if mw.cdWaveformPending == nil {
+		mw.cdWaveformPending = make(map[string]struct{})
+	}
+	if _, ok := mw.cdWaveformPending[key]; ok {
+		mw.cdWaveformMu.Unlock()
+		return
+	}
+	mw.cdWaveformPending[key] = struct{}{}
+	mw.cdWaveformMu.Unlock()
+
+	go func() {
+		track := cdrom.Track{Number: trackNum}
+		wf, err := cdrom.WaveformForTrack(device, track)
+		if err != nil {
+			log.Printf("[Waveform] CD scan failed for %s track %d: %v", device, trackNum, err)
+			mw.cdWaveformMu.Lock()
+			delete(mw.cdWaveformPending, key)
+			mw.cdWaveformMu.Unlock()
+			return
+		}
+
+		glib.IdleAdd(func() bool {
+			mw.cdWaveformMu.Lock()
+			delete(mw.cdWaveformPending, key)
+			mw.cdWaveformMu.Unlock()
+
+			for i := range mw.songs {
+				if mw.songs[i].IsCD && mw.songs[i].Device == device && mw.songs[i].TrackNum == trackNum {
+					mw.songs[i].Waveform = wf
+					if i == mw.playingIdx && mw.waveformOverlay != nil {
+						mw.waveformOverlay.SetWaveform(wf)
+					}
+					break
+				}
+			}
+			return false
+		})
+	}()
 }
 
 func getAverageColor(pixbuf *gdk.Pixbuf) (r, g, b int) {
