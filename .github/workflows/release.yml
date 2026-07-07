@@ -55,6 +55,7 @@ jobs:
               mingw-w64-x86_64-opus
               mingw-w64-x86_64-opusfile
               mingw-w64-x86_64-pkg-config
+              mingw-w64-x86_64-ntldd
             ffmpeg-url: "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
           - arch: arm64
             allow_failure: true
@@ -69,6 +70,7 @@ jobs:
               mingw-w64-clang-aarch64-opus
               mingw-w64-clang-aarch64-opusfile
               mingw-w64-clang-aarch64-pkg-config
+              mingw-w64-clang-aarch64-ntldd
             ffmpeg-url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl.zip"
     steps:
       - uses: actions/checkout@v4
@@ -117,11 +119,18 @@ jobs:
           $ffmpeg = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
           Copy-Item $ffmpeg.FullName -Destination "ffmpeg.exe"
 
+      - name: Collect GTK DLLs and image loaders
+        shell: msys2 {0}
+        run: |
+          export PATH="/${{ matrix.mingw-prefix }}/bin:$PATH"
+          mkdir -p "${{ matrix.output }}"
+          cp gozik.exe "${{ matrix.output }}/"
+          ./installer/scripts/collect-windows-dlls.sh "${{ matrix.mingw-prefix }}" "${{ matrix.output }}"
+
       - name: Build Windows ${{ matrix.arch }} payload for installer
         shell: powershell
         run: |
           New-Item -ItemType Directory -Path "${{ matrix.output }}" -Force | Out-Null
-          Copy-Item "gozik.exe" "${{ matrix.output }}\"
           Copy-Item "ffmpeg.exe" "${{ matrix.output }}\"
           Copy-Item -Recurse "assets" "${{ matrix.output }}\"
           tar -czf "gozik-payload-windows-${{ matrix.arch }}.tar.gz" -C "${{ matrix.output }}" .
@@ -142,7 +151,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install gtk+3 pkg-config opus opusfile
+          brew install gtk+3 pkg-config opus opusfile dylibbundler
 
       - name: Build gozik
         run: |
@@ -199,6 +208,28 @@ jobs:
           </dict>
           </plist>
           EOF
+
+      - name: Bundle GTK dylibs and image loaders
+        run: |
+          APP="Gozik.app"
+          mkdir -p "$APP/Contents/Frameworks"
+          dylibbundler -od -b -x "$APP/Contents/MacOS/gozik" -d "$APP/Contents/Frameworks/"
+
+          # Bundle gdk-pixbuf loaders into Resources so the runtime can point
+          # at them with an env var.
+          for prefix in /opt/homebrew /usr/local; do
+            if [ -d "$prefix/lib/gdk-pixbuf-2.0" ]; then
+              VERSION_DIR="$(find "$prefix/lib/gdk-pixbuf-2.0" -maxdepth 1 -type d -name '2.*' | head -n1)"
+              if [ -n "$VERSION_DIR" ] && [ -d "${VERSION_DIR}/loaders" ]; then
+                RES_DIR="$APP/Contents/Resources/lib/gdk-pixbuf-2.0/$(basename "$VERSION_DIR")"
+                mkdir -p "${RES_DIR}/loaders"
+                cp -L "${VERSION_DIR}/loaders/"*.so "${RES_DIR}/loaders/"
+                gdk-pixbuf-query-loaders "${RES_DIR}/loaders/"*.so > "${RES_DIR}/loaders.cache"
+                sed -i "" "s|\"${RES_DIR}/|\"|g; s|\"${VERSION_DIR}/loaders/|\"|g" "${RES_DIR}/loaders.cache"
+                break
+              fi
+            fi
+          done
 
       - name: Build macOS ARM64 payload for installer
         run: |

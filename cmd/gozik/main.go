@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"github.com/gg582/gozik/internal/config"
 	"github.com/gg582/gozik/internal/provider"
 	"github.com/gg582/gozik/internal/ui"
 	"github.com/gotk3/gotk3/glib"
@@ -21,6 +22,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	config.SetupBundledEnvironment()
 	configureRuntime()
 
 	app, err := gtk.ApplicationNew(appID, glib.APPLICATION_FLAGS_NONE)
